@@ -1,0 +1,65 @@
+
+h1 {
+  font-family: 'plex';
+}
+
+.canvas {
+  display: inline-block;
+  width:40%;
+  height:800px;
+}
+
+.uiContainer {
+  width:100%;
+  height: calc(100% - 200px);
+  display:flex;
+}
+
+.tools {
+  background-color:#222222;
+  color:white;
+  overflow:auto;
+  width:160px;
+  display:inline-block;
+  padding:8px;
+  border-right:1px solid #999999;
+  font-size:13px;
+}
+
+.tools div {
+  padding:4px;
+}
+
+.tools div.subitem {
+  padding-left:30px;
+}
+.tools label {
+  display:block;
+}
+.engine {
+  width: calc(100% - 320px);
+  display:inline-block;
+  position:relative;
+}
+.selectedItem {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 9999999;
+}
+.settings {
+  background-color:#222222;
+  color:white;
+  overflow:auto;
+  width:160px;
+  display:inline-block;
+  padding:8px;
+  border-left:1px solid #999999;
+  font-size:13px;
+}
+
+hr {
+  height: 1px;
+  background-color: #464646;
+  border: none;
+}

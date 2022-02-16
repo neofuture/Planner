@@ -1,0 +1,30 @@
+.canvasContainer {
+  width:100%;
+  height:100%;
+  position:relative;
+  -webkit-touch-callout: none; /* iOS Safari */
+  -webkit-user-select: none; /* Safari */
+  -khtml-user-select: none; /* Konqueror HTML */
+  -moz-user-select: none; /* Old versions of Firefox */
+  -ms-user-select: none; /* Internet Explorer/Edge */
+  user-select: none; /* Non-prefixed version, currently supported by Chrome, Opera and Firefox */
+
+}
+
+.canvas, .canvasGrid, .canvasTools, .canvasTiles, .canvasInsets, .canvasControls {
+  display: block; /* N.B. important for canvas to fit host */
+  margin: 0px;
+  background: transparent; /* color shows if no scene background or renderer "setClearColor" not set */
+  width:100%;
+  height:100%;
+  top:0;
+  left:0;
+  position:absolute;
+  -webkit-touch-callout: none; /* iOS Safari */
+  -webkit-user-select: none; /* Safari */
+  -khtml-user-select: none; /* Konqueror HTML */
+  -moz-user-select: none; /* Old versions of Firefox */
+  -ms-user-select: none; /* Internet Explorer/Edge */
+  user-select: none; /* Non-prefixed version, currently supported by Chrome, Opera and Firefox */
+  -webkit-transform: translateZ(0);
+}

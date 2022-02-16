@@ -1,0 +1,14 @@
+<div class="canvasContainer">
+  <canvas #canvasGrid class="canvasGrid"></canvas>
+  <canvas #canvasTiles class="canvasTiles"></canvas>
+  <canvas #canvas class="canvas"></canvas>
+  <canvas #canvasInsets class="canvasInsets"></canvas>
+  <canvas #canvasTools class="canvasTools"></canvas>
+
+  <canvas #canvasControls class="canvasControls"
+          (pinchstart)="onPinchStart($event)"
+          (pinchend)="onPinchEnd($event)"
+          (pinch)="onPinch($event)"
+  ></canvas>
+</div>
+

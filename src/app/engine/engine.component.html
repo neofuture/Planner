@@ -1,0 +1,341 @@
+<!--Zoom-->
+<!--<input type="range" [(ngModel)]="zoomLevel" min="0.01" max="7" (ngModelChange)="zoomIn()"-->
+<!--       step="0.0001" style="width:600px;height:5px;">-->
+<!--Wall Width-->
+<!--<input type="range" [(ngModel)]="wallWidth" min="100" max="350" (ngModelChange)="setWallWidth()"-->
+<!--       step="0.0001" style="width:400px;height:5px;">-->
+<!--<hr>-->
+<app-engine3d></app-engine3d>
+<div class="uiContainer">
+
+  <div class="tools">
+
+    <button pButton (click)="setRoomShape(1)" label="Room Shape 1"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="setRoomShape(2)" label="Room Shape 2"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="setRoomShape(3)" label="Room Shape 3"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <hr>
+
+    <div>
+      Grid Size
+      <p-dropdown [options]="gridSizes" [(ngModel)]="gridSize" (ngModelChange)="setGrid($event)"
+                  [style]="{'width':'100%', 'minWidth': '100%'}"></p-dropdown>
+    </div>
+    <hr>
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showGrid" (ngModelChange)="updateGrid($event);" label="Grid"></p-checkbox>
+    </div>
+    <div class="subitem">
+      <p-checkbox binary="true" [(ngModel)]="showRulers" (ngModelChange)="updateRulers($event);"
+                  label="Rulers"></p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showGround" (ngModelChange)="updateGround($event);" label="Ground">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showMeasurements" (ngModelChange)="updateMeasurements($event); "
+                  label="Measurements"></p-checkbox>
+    </div>
+
+    <div class="subitem" *ngIf="showMeasurements">
+      <p-checkbox binary="true" [(ngModel)]="showInsetMeasurements" (ngModelChange)="updateInsetMeasurements($event);"
+                  label="Insets"></p-checkbox>
+    </div>
+
+    <div class="subitem" *ngIf="showMeasurements">
+      <p-checkbox binary="true" [(ngModel)]="showCorners" (ngModelChange)="updateCorners($event);" label="Corners">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showLetters" (ngModelChange)="updateLetters($event);" label="Wall Letters">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showArea" (ngModelChange)="updateArea($event);" label="Area">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showWalls" (ngModelChange)="updateWalls($event);" label="Walls">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showSlopes" (ngModelChange)="updateSlopes($event);" label="Ceiling Slopes">
+      </p-checkbox>
+    </div>
+
+<!--    <div>-->
+<!--      <p-checkbox binary="true" [(ngModel)]="showTools" (ngModelChange)="updateTools($event);" label="Tools">-->
+<!--      </p-checkbox>-->
+<!--    </div>-->
+
+<!--    <div class="subitem" *ngIf="showTools">-->
+<!--      <p-checkbox binary="true" [(ngModel)]="showCornerHandles" (ngModelChange)="updateCornerHandles($event); "-->
+<!--                  label="Handles"></p-checkbox>-->
+<!--    </div>-->
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showInsets" (ngModelChange)="updateInsets($event);" label="Insets">
+      </p-checkbox>
+    </div>
+
+    <div class="subitem" *ngIf="showInsets">
+      <p-checkbox binary="true" [(ngModel)]="showInsetOpenings" (ngModelChange)="updateInsetOpenings($event);"
+                  label="Openings"></p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showColours" (ngModelChange)="updateColours($event);" label="Colours">
+      </p-checkbox>
+    </div>
+
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showFlooring" (ngModelChange)="updateFlooring($event);" label="Flooring">
+      </p-checkbox>
+    </div>
+    <div>
+      <p-checkbox binary="true" [(ngModel)]="showLocks" (ngModelChange)="updateLocks($event);" label="Locks">
+      </p-checkbox>
+    </div>
+    <hr>
+
+    <button pButton (click)="autoCentre()" label="Centre" [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="autoZoom()" label="Auto Zoom"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="autoZoomCentre()" label="Auto Zoom/Centre"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+
+
+  </div>
+  <div class="engine">
+    <div class="selectedItem">{{ itemDetails | headings }}</div>
+    <p-slider [(ngModel)]="zoomLevel"
+              [style]="{'height':'33%', 'position': 'absolute', 'bottom': '30px', 'right': '30px', 'zIndex': 9999999}"
+              orientation="vertical" [min]="0.05" [max]="2" (ngModelChange)="zoomIn()" [step]="0.0001"></p-slider>
+    <app-engine2d [roomShape]="roomShape" (zoomLevel)="setZoomLevel($event)"></app-engine2d>
+  </div>
+  <div class="settings">
+    <button pButton (click)="setMode('all')" label="All" [ngClass]="{'ui-button-success': mode=='all'}"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="setMode('insets')" label="Insets" [ngClass]="{'ui-button-success': mode=='insets'}"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="setMode('walls')" label="Walls" [ngClass]="{'ui-button-success': mode=='walls'}"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <button pButton (click)="setMode('slopes')" label="Ceiling Slopes" [ngClass]="{'ui-button-success': mode=='slopes'}"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+    <hr>
+    <button pButton (click)="setFreeEdit()" label="Edit Room Shape" [ngClass]="{'ui-button-success': freeEdit, 'ui-button-info': !freeEdit}"
+            [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+<!--    <p-checkbox label="Snap to Grid" binary="true" [(ngModel)]="snapToGrid" (ngModelChange)="setSnapToGrid($event)"></p-checkbox>-->
+    <hr>
+    <div *ngIf="selectedItem.type === 'inset'">
+      <h2>Inset - {{ selectedItem.identity }}</h2>
+      <ng-container *ngFor="let opening of selectedItem.inset.openings; let i = index">
+        <button pButton *ngIf="opening.state== 'closed' || opening.state== 'closing'"
+                (click)="openInsets(selectedItem.inset, i)" [label]="'Open ' + opening.identity"
+                [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+        <button pButton *ngIf="opening.state== 'open' || opening.state== 'opening'"
+                (click)="closeInsets(selectedItem.inset, i)" [label]="'Close ' + opening.identity"
+                [style]="{'margin': '4px 0 4px 0', 'width': '100%'}"></button>
+        <table style="width:100%;">
+          <tr>
+            <td>
+              Degrees Open (&deg;)
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <p-spinner [(ngModel)]="opening.degreesOpen" [style]="{'width': '100%', 'minWidth': '100%'}"
+                         (ngModelChange)="updatePlan()" [step]="1" [min]="opening.minDegree"
+                         [max]="opening.maxDegree"></p-spinner>
+            </td>
+          </tr>
+        </table>
+      </ng-container>
+      <hr>
+      <h2>Position</h2>
+      <table style="width:100%;">
+        <tr>
+          <td><p-checkbox [(ngModel)]="selectedItem.inset.locked" binary="true" label="Locked" (ngModelChange)="updatePlan()"></p-checkbox></td>
+        </tr>
+        <tr>
+          <td><hr></td>
+        </tr>
+        <tr>
+          <td>
+            Wall
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-dropdown [style]="{'width': '100%', 'minWidth': '100%'}" [options]="wallsList" [(ngModel)]="selectedItem.inset.wall" (ngModelChange)="updatePlan()" [disabled]="selectedItem.inset.locked"></p-dropdown>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Left Position (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="selectedItem.inset.positionLeft" [style]="{'width': '100%', 'minWidth': '100%'}"
+                       (ngModelChange)="updatePlan()" [step]="10" [min]="10"
+                       [max]="walls[selectedItem.wall].length - 10 - selectedItem.inset.width" [disabled]="selectedItem.inset.locked"></p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            From Ground (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="selectedItem.inset.positionGround" [style]="{'width': '100%', 'minWidth': '100%'}"
+                       (ngModelChange)="updatePlan()" [step]="10" [min]="0" [disabled]="selectedItem.inset.locked"></p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Width (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="selectedItem.inset.width" [style]="{'width': '100%', 'minWidth': '100%'}"
+                       (ngModelChange)="updatePlan()" [step]="10" [min]="10"
+                       [max]="walls[selectedItem.wall].length - 10 - selectedItem.inset.positionLeft" [disabled]="selectedItem.inset.locked"></p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Height (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="selectedItem.inset.height" [style]="{'width': '100%', 'minWidth': '100%'}"
+                       (ngModelChange)="updatePlan()" [step]="10" [min]="10" [disabled]="selectedItem.inset.locked"></p-spinner>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <div *ngIf="selectedItem.type === 'wall'">
+      <h2>Wall</h2>
+    </div>
+    <div *ngIf="selectedItem.type === 'ground'">
+      <h2>Ground</h2>
+
+      <table style="width:100%;">
+        <tr>
+          <td>
+            Angle (&deg;)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorAngle" [min]="0" [max]="360" (ngModelChange)="updateFloorAngle()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+
+        </tr>
+        <tr>
+          <td>
+            Position X (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorPositionX" [min]="0" [max]="1000" (ngModelChange)="updateFloorPositionX()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr>        <tr>
+          <td>
+            Tile Width (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorWidth" [min]="0" [max]="1000" (ngModelChange)="updateFloorWidth()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr><tr>
+          <td>
+            Tile Height (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorHeight" [min]="0" [max]="1000" (ngModelChange)="updateFloorHeight()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Position Y (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorPositionY" [min]="0" [max]="1000" (ngModelChange)="updateFloorPositionY()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Joint Gap (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorGap" [min]="0" [max]="100" (ngModelChange)="updateFloorGap()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Offset (mm)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <p-spinner [(ngModel)]="floorOffset" [min]="-500" [max]="500" (ngModelChange)="updateFloorOffset()"
+                       [style]="{'width': '100%', 'minWidth': '100%'}">
+
+            </p-spinner>
+          </td>
+        </tr>
+      </table>
+
+
+    </div>
+    <div *ngIf="selectedItem.type === 'slope'">
+      <h2>Slope Ceiling</h2>
+    </div>
+
+
+    <!--    <pre style="width:100%;height:100%;overflow:auto;">-->
+    <!--{{ selectedItem | json }}-->
+    <!--    </pre>-->
+  </div>
+</div>
+

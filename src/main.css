@@ -1,0 +1,34 @@
+@font-face {
+  font-family: 'plex';
+  src: url('/assets/fonts/IBMPlexSans-Regular.eot');
+  src: url('/assets/fonts/IBMPlexSans-Regular.eot?#iefix') format('embedded-opentype'),
+  url('/assets/fonts/IBMPlexSans-Regular.woff') format('woff'),
+  url('/assets/fonts/IBMPlexSans-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'plex bold';
+  src: url('/assets/fonts/IBMPlexSans-Bold.eot');
+  src: url('/assets/fonts/IBMPlexSans-Bold.eot?#iefix') format('embedded-opentype'),
+  url('/assets/fonts/IBMPlexSans-Bold.woff') format('woff'),
+  url('/assets/fonts/IBMPlexSans-Bold.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+html, body{
+  font-family: 'plex', serif;
+  height:100%;
+  width:100%;
+  margin:0;
+  overflow:hidden;
+}
+ * {
+   box-sizing:border-box;
+ }
+
+ .ui-spinner, .ui-spinner-input{
+   width:100%;
+ }
