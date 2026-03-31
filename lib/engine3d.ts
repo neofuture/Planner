@@ -1054,6 +1054,10 @@ export class Engine3d {
       const preset = ins.doorStyle ? DOOR_PRESETS[ins.doorStyle] : null;
       const panelThick = (preset?.thickness ?? 35) * MM_TO_M;
 
+      // Door stop dimensions
+      const stopW = 0.012; // 12mm wide
+      const stopD = 0.010; // 10mm deep
+
       // Extend frame slightly to fill any gaps at wall edges
       const ext = 0.008;
       const frameTop = this.addBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat);
@@ -1073,6 +1077,41 @@ export class Engine3d {
         const scale = innerW / w;
         const panelW = ow * scale - gap;
         const panelH = innerH - gap;
+
+        // Door stop position: on the side the door closes against
+        // Outward: stop at interior (behind door at Z=panelThick)
+        // Inward: stop at exterior (behind door at Z=wallT-panelThick)
+        const stopZ = outward ? panelThick + stopD / 2 : wallT - panelThick - stopD / 2;
+        const stopInnerL = l + df;
+        const stopInnerW = w - df * 2;
+
+        // Add door stop moulding (top, left, right)
+        const stopTop = new THREE.Mesh(
+          new THREE.BoxGeometry(stopInnerW, stopW, stopD),
+          this.frameMat
+        );
+        stopTop.position.set(stopInnerL + stopInnerW / 2, b + innerH - stopW / 2, stopZ);
+        stopTop.castShadow = true;
+        stopTop.receiveShadow = true;
+        parent.add(stopTop);
+
+        const stopLeft = new THREE.Mesh(
+          new THREE.BoxGeometry(stopW, innerH, stopD),
+          this.frameMat
+        );
+        stopLeft.position.set(stopInnerL + stopW / 2, b + innerH / 2, stopZ);
+        stopLeft.castShadow = true;
+        stopLeft.receiveShadow = true;
+        parent.add(stopLeft);
+
+        const stopRight = new THREE.Mesh(
+          new THREE.BoxGeometry(stopW, innerH, stopD),
+          this.frameMat
+        );
+        stopRight.position.set(l + w - df - stopW / 2, b + innerH / 2, stopZ);
+        stopRight.castShadow = true;
+        stopRight.receiveShadow = true;
+        parent.add(stopRight);
 
         const pivot = new THREE.Group();
         const pivotX = leftHung
