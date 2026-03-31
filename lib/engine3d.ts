@@ -1054,9 +1054,11 @@ export class Engine3d {
       const preset = ins.doorStyle ? DOOR_PRESETS[ins.doorStyle] : null;
       const panelThick = (preset?.thickness ?? 35) * MM_TO_M;
 
-      const frameTop = this.addBox(parent, l, b + h - df, w, df, wallT, this.frameMat);
-      const frameLeft = this.addBox(parent, l, b, df, h, wallT, this.frameMat);
-      const frameRight = this.addBox(parent, l + w - df, b, df, h, wallT, this.frameMat);
+      // Extend frame slightly to fill any gaps at wall edges
+      const ext = 0.008;
+      const frameTop = this.addBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat);
+      const frameLeft = this.addBox(parent, l - ext, b, df + ext, h + ext, wallT, this.frameMat);
+      const frameRight = this.addBox(parent, l + w - df, b, df + ext, h + ext, wallT, this.frameMat);
       const frameMeshes = [frameTop, frameLeft, frameRight];
 
       const innerW = w - df * 2;
@@ -1076,13 +1078,15 @@ export class Engine3d {
         const pivotX = leftHung
           ? l + df + (disp / w) * innerW
           : l + w - df - ((w - disp) / w) * innerW;
-        // Door is flush with the side it opens towards
+        // Door pivot is at the face it opens from (exterior for outward, interior for inward)
         const pivotZ = outward ? wallT : 0;
         pivot.position.set(pivotX, b, pivotZ);
 
         const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick);
-        // Offset door panel to be on the correct side of the pivot
-        const doorZOffset = outward ? -panelThick / 2 : panelThick / 2;
+        // Door panel sits OUTSIDE the wall, flush with the opening face
+        // Outward: door at z = wallT to wallT + panelThick (exterior)
+        // Inward: door at z = -panelThick to 0 (interior)
+        const doorZOffset = outward ? panelThick / 2 : -panelThick / 2;
         doorGroup.position.set(
           leftHung ? panelW / 2 : -panelW / 2,
           panelH / 2,
