@@ -612,7 +612,9 @@ export class Engine3d {
     miterLeft = 0,
     miterRight = 0
   ) {
-    const c = 0.025;
+    // Increase chamfer size to cover miter offset
+    const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
+    const c = 0.025 + maxMiter;
 
     for (const exterior of [false, true]) {
       const fz = exterior ? wallT : 0;
@@ -732,10 +734,8 @@ export class Engine3d {
     parent.rotation.y = -wallAngle;
 
     if (ins.type === "window") {
-      // Extend frame depth to cover miter offset on angled walls
-      const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
-      const frameD = Math.max(0.10, wallT + maxMiter * 2 + 0.02);
-      const mid = wallT / 2; // Center frame in wall thickness
+      const frameD = 0.10;
+      const mid = frameD / 2;
       const innerW = w - frameW * 2;
       const innerH = h - frameW * 2;
 
