@@ -1078,17 +1078,16 @@ export class Engine3d {
         const pivotX = leftHung
           ? l + df + (disp / w) * innerW
           : l + w - df - ((w - disp) / w) * innerW;
-        // Door hinge is on the face the door opens TOWARD
-        // Outward opens toward exterior → hinge at exterior (wallT)  
-        // Inward opens toward interior → hinge at interior (0)
-        // Door panel sits OUTSIDE the wall frame on that face
-        const pivotZ = outward ? wallT : 0;
+        // Door hinge is on the face the door CLOSES against
+        // Outward: door closes at interior (0), swings toward exterior
+        // Inward: door closes at exterior (wallT), swings toward interior
+        const pivotZ = outward ? 0 : wallT;
         pivot.position.set(pivotX, b, pivotZ);
 
         const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick);
-        // Door extends OUTSIDE the wall from the hinge face
-        // Outward: door from wallT to wallT+panelThick (exterior side of wall)
-        // Inward: door from -panelThick to 0 (interior side of wall)
+        // Door sits INSIDE the frame at the hinge face
+        // Outward: hinge at 0, door from 0 to panelThick
+        // Inward: hinge at wallT, door from wallT-panelThick to wallT
         const doorZOffset = outward ? panelThick / 2 : -panelThick / 2;
         doorGroup.position.set(
           leftHung ? panelW / 2 : -panelW / 2,
