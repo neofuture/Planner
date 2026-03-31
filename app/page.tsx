@@ -181,19 +181,63 @@ export default function PlannerPage() {
             className={styles.btn}
             onClick={() => handleRoomShape(1)}
           >
-            Room Shape 1
+            Room 1
           </button>
           <button
             className={styles.btn}
             onClick={() => handleRoomShape(2)}
           >
-            Room Shape 2
+            Room 2
           </button>
           <button
             className={styles.btn}
             onClick={() => handleRoomShape(3)}
           >
-            Room Shape 3
+            Room 3
+          </button>
+          <hr className={styles.divider} />
+          <input
+            type="file"
+            id="roomJsonUpload"
+            accept=".json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                  try {
+                    const json = JSON.parse(evt.target?.result as string);
+                    setRoomShape(json);
+                  } catch (err) {
+                    alert("Invalid JSON file");
+                  }
+                };
+                reader.readAsText(file);
+                e.target.value = "";
+              }
+            }}
+          />
+          <button
+            className={styles.btn}
+            onClick={() => document.getElementById("roomJsonUpload")?.click()}
+          >
+            Upload JSON
+          </button>
+          <button
+            className={styles.btn}
+            onClick={() => {
+              const json = JSON.stringify(roomShape, null, 2);
+              const blob = new Blob([json], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "room-shape.json";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download JSON
           </button>
           <hr className={styles.divider} />
 
