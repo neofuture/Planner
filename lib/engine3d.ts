@@ -588,12 +588,14 @@ export class Engine3d {
         const iw = ins.width * MM_TO_M;
         const ih = ins.height * MM_TO_M;
         const sd = ins.type === "window" ? 0.04 : 0;
-        const fg = ins.type === "door" ? 0.005 : 0.002;
         // Compute miter offset at opening location
         const tLeft = Math.max(0, Math.min(1, il / len));
         const tRight = Math.max(0, Math.min(1, (il + iw) / len));
         const miterLeft = ms + (me - ms) * tLeft;
         const miterRight = ms + (me - ms) * tRight;
+        // Extend chamfer gap to cover miter offset
+        const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
+        const fg = (ins.type === "door" ? 0.005 : 0.002) + maxMiter;
         this.addOpeningChamfer(p1, angle, il - fg, ib - sd - fg, iw + fg * 2, ih + sd + fg * 2, wallT, ins.type === "door", miterLeft, miterRight);
         this.addInset(ins, p1, angle, wallT, roomShape, miterLeft, miterRight);
       }
