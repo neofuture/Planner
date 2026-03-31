@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>3D Pointer Lock Test (Standalone)</title>
+<style>
+  body { margin: 0; background: #111; color: #0f0; font-family: monospace; overflow: hidden; }
+  #info {
+    position: absolute; top: 10px; left: 10px; z-index: 10;
+    background: rgba(0,0,0,0.7); padding: 10px 16px; border-radius: 6px;
+    font-size: 13px; line-height: 1.6; pointer-events: none;
+  }
+  #hint {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(0,0,0,0.6); color: #fff; padding: 12px 24px; border-radius: 6px;
+    font-size: 14px; cursor: pointer; z-index: 10;
+  }
+  #hint.hidden { display: none; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="info">
+  <div id="fps">FPS: --</div>
+  <div id="events">Mouse events/s: --</div>
+  <div id="status">Status: unlocked</div>
+</div>
+<div id="hint">Click to enter 3D — WASD move, Mouse look, ESC exit</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const EYE_HEIGHT = 1.732;
+const WALK_SPEED = 2.5;
+
+const fpsEl = document.getElementById('fps');
+const eventsEl = document.getElementById('events');
+const statusEl = document.getElementById('status');
+const hintEl = document.getElementById('hint');
+
+// --- Renderer (same settings as engine3d.ts) ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// --- Scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+
+// --- Camera ---
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 200);
+camera.position.set(0, EYE_HEIGHT, 3);
+
+// --- Environment map (same as engine3d.ts) ---
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(50, 32, 16),
+  new THREE.MeshBasicMaterial({ color: 0x88bbee, side: THREE.BackSide })
+));
+const gMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(100, 100),
+  new THREE.MeshBasicMaterial({ color: 0x556633 })
+);
+gMesh.rotation.x = -Math.PI / 2;
+gMesh.position.y = -1;
+envScene.add(gMesh);
+scene.environment = pmrem.fromScene(envScene, 0, 0.1, 100).texture;
+pmrem.dispose();
+
+// --- Lighting (same as engine3d.ts) ---
+scene.add(new THREE.AmbientLight(0xfff8f0, 0.3));
+scene.add(new THREE.HemisphereLight(0x88bbee, 0x445522, 0.5));
+
+const sun = new THREE.DirectionalLight(0xfff5e0, 2.0);
+sun.position.set(-8, 15, -10);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(4096);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 60;
+sun.shadow.camera.left = -20;
+sun.shadow.camera.right = 20;
+sun.shadow.camera.top = 20;
+sun.shadow.camera.bottom = -20;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+scene.add(sun.target);
+
+const fill = new THREE.DirectionalLight(0xaaccff, 0.4);
+fill.position.set(6, 8, 12);
+scene.add(fill);
+
+// --- Ground plane ---
+const groundGeo = new THREE.PlaneGeometry(60, 60);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a6832, roughness: 0.95 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// --- Simple room (4 walls + floor) ---
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1e1cc, roughness: 0.6 });
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xc49a6c, roughness: 0.75, side: THREE.DoubleSide });
+
+const roomW = 5, roomD = 4, roomH = 2.5, wallT = 0.15;
+
+// Floor
+const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), floorMat);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.receiveShadow = true;
+scene.add(floorMesh);
+
+// Walls
+function addWall(w, h, x, y, z, ry) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallT), wallMat);
+  m.position.set(x, y, z);
+  m.rotation.y = ry || 0;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+}
+addWall(roomW, roomH, 0, roomH / 2, -roomD / 2, 0);
+addWall(roomW, roomH, 0, roomH / 2, roomD / 2, 0);
+addWall(roomD, roomH, -roomW / 2, roomH / 2, 0, Math.PI / 2);
+addWall(roomD, roomH, roomW / 2, roomH / 2, 0, Math.PI / 2);
+
+// --- Pointer lock + mouse look (same pattern as engine3d.ts) ---
+let isLocked = false;
+let targetYaw = 0, targetPitch = 0;
+let currentYaw = 0, currentPitch = 0;
+const minPitch = Math.PI / 2 - Math.PI * 0.85;
+const maxPitch = Math.PI / 2 - Math.PI * 0.15;
+const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const moveVec = new THREE.Vector3();
+const keys = {};
+
+const canvas = renderer.domElement;
+
+hintEl.addEventListener('click', () => {
+  canvas.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  isLocked = document.pointerLockElement === canvas;
+  statusEl.textContent = 'Status: ' + (isLocked ? 'LOCKED' : 'unlocked');
+  hintEl.classList.toggle('hidden', isLocked);
+  if (isLocked) {
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+  } else {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keyup', onKeyUp);
+  }
+});
+
+let mmCount = 0;
+function onMouseMove(e) {
+  mmCount++;
+  targetYaw -= e.movementX * 0.002;
+  targetPitch += e.movementY * 0.002;
+  targetPitch = Math.max(minPitch, Math.min(maxPitch, targetPitch));
+}
+function onKeyDown(e) { keys[e.code] = true; }
+function onKeyUp(e) { keys[e.code] = false; }
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- Animation loop (same as engine3d.ts) ---
+const clock = new THREE.Clock();
+let frameCount = 0;
+let lastStatTime = performance.now();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+
+  if (isLocked) {
+    // Arrow key look
+    const LOOK_SPEED = 2.5;
+    if (keys['ArrowLeft'])  targetYaw += LOOK_SPEED * delta;
+    if (keys['ArrowRight']) targetYaw -= LOOK_SPEED * delta;
+    if (keys['ArrowUp'])    targetPitch += LOOK_SPEED * delta;
+    if (keys['ArrowDown'])  targetPitch -= LOOK_SPEED * delta;
+    targetPitch = Math.max(minPitch, Math.min(maxPitch, targetPitch));
+
+    // Smooth interpolation (same factor as engine3d.ts)
+    const lf = 1 - Math.exp(-20 * delta);
+    currentYaw += (targetYaw - currentYaw) * lf;
+    currentPitch += (targetPitch - currentPitch) * lf;
+    lookEuler.set(currentPitch, currentYaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(lookEuler);
+
+    // WASD movement
+    const dist = WALK_SPEED * delta;
+    if (keys['KeyW'] || keys['KeyS']) {
+      const d = (keys['KeyW'] ? dist : 0) + (keys['KeyS'] ? -dist : 0);
+      moveVec.setFromMatrixColumn(camera.matrix, 0);
+      moveVec.crossVectors(camera.up, moveVec);
+      camera.position.addScaledVector(moveVec, d);
+    }
+    if (keys['KeyA'] || keys['KeyD']) {
+      const d = (keys['KeyD'] ? dist : 0) + (keys['KeyA'] ? -dist : 0);
+      moveVec.setFromMatrixColumn(camera.matrix, 0);
+      camera.position.addScaledVector(moveVec, d);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  // Stats every second
+  frameCount++;
+  const now = performance.now();
+  if (now - lastStatTime >= 1000) {
+    fpsEl.textContent = 'FPS: ' + frameCount;
+    eventsEl.textContent = 'Mouse events/s: ' + mmCount;
+    frameCount = 0;
+    mmCount = 0;
+    lastStatTime = now;
+  }
+}
+
+clock.start();
+animate();
+</script>
+</body>
+</html>
