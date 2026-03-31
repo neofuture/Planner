@@ -56,6 +56,7 @@ export const roomShape1: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "double",
+      hasHandle: true,
       openings: [
         {
           identity: "Left Door",
@@ -126,6 +127,7 @@ export const roomShape1: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -150,6 +152,7 @@ export const roomShape1: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -196,6 +199,7 @@ export const roomShape2: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -220,6 +224,7 @@ export const roomShape2: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -244,6 +249,7 @@ export const roomShape2: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -268,6 +274,7 @@ export const roomShape2: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -314,6 +321,7 @@ export const roomShape3: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "double",
+      hasHandle: true,
       openings: [
         {
           identity: "Right Door",
@@ -349,6 +357,7 @@ export const roomShape3: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",
@@ -373,6 +382,7 @@ export const roomShape3: RoomShape = {
       locked: false,
       type: "door",
       doorStyle: "accessible",
+      hasHandle: true,
       openings: [
         {
           identity: "Accessible Door",

@@ -567,6 +567,15 @@ export default function PlannerPage() {
                       </option>
                     ))}
                   </select>
+                  <Checkbox
+                    label="Has Handle"
+                    checked={selectedItem.inset.hasHandle ?? false}
+                    onChange={() => {
+                      selectedItem.inset!.hasHandle = !selectedItem.inset!.hasHandle;
+                      engine3dRef.current?.refresh();
+                      setSelectedItem({ ...selectedItem });
+                    }}
+                  />
                 </>
               )}
               {selectedItem.inset.openings.map((opening, i) => {
@@ -598,6 +607,40 @@ export default function PlannerPage() {
                         engine3dRef.current?.refresh();
                       }}
                     />
+                    <label className={styles.fieldLabel}>Opens</label>
+                    <select
+                      className={styles.select}
+                      value={opening.open}
+                      onChange={(e) => {
+                        opening.open = e.target.value as "inwards" | "outwards";
+                        engine?.planView();
+                        engine3dRef.current?.refresh();
+                        setSelectedItem({ ...selectedItem });
+                      }}
+                    >
+                      <option value="inwards">Inwards</option>
+                      <option value="outwards">Outwards</option>
+                    </select>
+                    <label className={styles.fieldLabel}>Hinge Side</label>
+                    <select
+                      className={styles.select}
+                      value={opening.hanging}
+                      onChange={(e) => {
+                        opening.hanging = e.target.value as "left" | "right" | "top" | "bottom";
+                        engine?.planView();
+                        engine3dRef.current?.refresh();
+                        setSelectedItem({ ...selectedItem });
+                      }}
+                    >
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                      {selectedItem.inset?.type === "window" && (
+                        <>
+                          <option value="top">Top</option>
+                          <option value="bottom">Bottom</option>
+                        </>
+                      )}
+                    </select>
                   </div>
                 );
               })}

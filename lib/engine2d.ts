@@ -1659,30 +1659,36 @@ export class Engine2d {
                     this.contextInsets.stroke();
                   }
                 } else if (insetItem.hanging === "right") {
+                  // Right-hung: hinge is at the RIGHT edge of the opening
+                  const hingePos = this.calculatePositionAlongWall(
+                    { x: hingeEdgeIn[0].x, y: hingeEdgeIn[0].y },
+                    { x: hingeEdgeIn[1].x, y: hingeEdgeIn[1].y },
+                    (insetItem.displacement + insetItem.width) * this.scale
+                  );
                   this.contextInsets.beginPath();
-                  this.contextInsets.moveTo(displacement.x, displacement.y);
+                  this.contextInsets.moveTo(hingePos.x, hingePos.y);
                   const X =
                     insetItem.width *
                       this.scale *
                       Math.cos(
                         walls[inset.wall].angle! + Math.PI - degreesOpen
                       ) +
-                    displacement.x;
+                    hingePos.x;
                   const Y =
                     insetItem.width *
                       this.scale *
                       Math.sin(
                         walls[inset.wall].angle! + Math.PI - degreesOpen
                       ) +
-                    displacement.y;
+                    hingePos.y;
                   this.contextInsets.lineTo(X, Y);
                   this.contextInsets.stroke();
                   if (degreesOpen > 0.1) {
                     this.contextInsets.beginPath();
                     this.contextInsets.lineWidth = 2;
                     this.contextInsets.arc(
-                      displacement.x,
-                      displacement.y,
+                      hingePos.x,
+                      hingePos.y,
                       insetItem.width * this.scale - 20 * this.scale,
                       walls[inset.wall].angle! + Math.PI - degreesOpen + 0.05,
                       walls[inset.wall].angle! + Math.PI - 0.05
@@ -1762,35 +1768,39 @@ export class Engine2d {
                     this.contextInsets.stroke();
                   }
                 } else if (insetItem.hanging === "right") {
+                  // Right-hung: hinge is at the RIGHT edge of the opening
+                  const hingePos = this.calculatePositionAlongWall(
+                    { x: hingeEdgeOut[0].x, y: hingeEdgeOut[0].y },
+                    { x: hingeEdgeOut[1].x, y: hingeEdgeOut[1].y },
+                    (insetItem.displacement + insetItem.width) * this.scale
+                  );
                   this.contextInsets.beginPath();
-                  this.contextInsets.moveTo(displacement.x, displacement.y);
+                  this.contextInsets.moveTo(hingePos.x, hingePos.y);
                   const X =
                     insetItem.width *
                       this.scale *
                       Math.cos(
-                        walls[inset.wall].angle! - Math.PI + degreesOpen
+                        walls[inset.wall].angle! + Math.PI + degreesOpen
                       ) +
-                    displacement.x;
+                    hingePos.x;
                   const Y =
                     insetItem.width *
                       this.scale *
                       Math.sin(
-                        walls[inset.wall].angle! - Math.PI + degreesOpen
+                        walls[inset.wall].angle! + Math.PI + degreesOpen
                       ) +
-                    displacement.y;
+                    hingePos.y;
                   this.contextInsets.lineTo(X, Y);
                   this.contextInsets.stroke();
                   if (degreesOpen > 0.1) {
                     this.contextInsets.beginPath();
                     this.contextInsets.lineWidth = 2;
                     this.contextInsets.arc(
-                      displacement.x,
-                      displacement.y,
+                      hingePos.x,
+                      hingePos.y,
                       insetItem.width * this.scale - 20 * this.scale,
-                      walls[inset.wall].angle! - Math.PI + 0.05,
-                      walls[inset.wall].angle! -
-                        (Math.PI - degreesOpen) -
-                        0.05
+                      walls[inset.wall].angle! + Math.PI + 0.05,
+                      walls[inset.wall].angle! + Math.PI + degreesOpen - 0.05
                     );
                     this.contextInsets.stroke();
                   }

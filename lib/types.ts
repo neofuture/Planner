@@ -39,6 +39,7 @@ export interface Inset {
   locked: boolean;
   type: "window" | "door";
   doorStyle?: DoorStyle;
+  hasHandle?: boolean;
   openings: Opening[];
   positionLeft: number;
   positionGround: number;

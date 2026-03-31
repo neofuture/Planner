@@ -1226,7 +1226,7 @@ export class Engine3d {
         const pivotZ = outward ? 0 : wallT;
         pivot.position.set(pivotX, b, pivotZ);
 
-        const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick, leftHung);
+        const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick, leftHung, ins.hasHandle ?? false);
         // Door sits INSIDE the frame at the hinge face
         // Outward: hinge at 0, door from 0 to panelThick
         // Inward: hinge at wallT, door from wallT-panelThick to wallT
@@ -1292,7 +1292,7 @@ export class Engine3d {
     this.roomGroup.add(parent);
   }
 
-  private buildPanelledDoor(w: number, h: number, thick: number, leftHung: boolean): THREE.Group {
+  private buildPanelledDoor(w: number, h: number, thick: number, leftHung: boolean, hasHandle: boolean): THREE.Group {
     const group = new THREE.Group();
     const recess = 0.003;
     const panelDepth = thick - recess * 2;
@@ -1357,25 +1357,27 @@ export class Engine3d {
       bar(rightCX, cy, pnlW, topMuntinH, panelDepth);
     }
 
-    // Add lever handles on both sides of the door
-    // Handle is on the opposite side from the hinge
-    // UK standard handle height: 1000-1050mm from floor (using 1025mm)
-    const handleX = leftHung ? hw - stileW / 2 : -hw + stileW / 2;
-    const handleY = -hh + 1.025; // 1025mm from bottom of door
-    
-    // Front handle (exterior side, Z positive)
-    // Use left-handed model for left-hung doors (lever points left)
-    // Use right-handed model for right-hung doors (lever points right)
-    const handleFront = this.buildLeverHandle(leftHung ? "left" : "right");
-    handleFront.position.set(handleX, handleY, thick / 2);
-    group.add(handleFront);
-    
-    // Back handle (interior side, Z negative)
-    // Mirrored - left-hung door needs right-handed handle on back (from back view, hinge is on right)
-    const handleBack = this.buildLeverHandle(leftHung ? "right" : "left");
-    handleBack.position.set(handleX, handleY, -thick / 2);
-    handleBack.rotation.y = Math.PI; // Face opposite direction
-    group.add(handleBack);
+    // Add lever handles on both sides of the door (if enabled)
+    if (hasHandle) {
+      // Handle is on the opposite side from the hinge
+      // UK standard handle height: 1000-1050mm from floor (using 1025mm)
+      const handleX = leftHung ? hw - stileW / 2 : -hw + stileW / 2;
+      const handleY = -hh + 1.025; // 1025mm from bottom of door
+      
+      // Front handle (exterior side, Z positive)
+      // Use left-handed model for left-hung doors (lever points left)
+      // Use right-handed model for right-hung doors (lever points right)
+      const handleFront = this.buildLeverHandle(leftHung ? "left" : "right");
+      handleFront.position.set(handleX, handleY, thick / 2);
+      group.add(handleFront);
+      
+      // Back handle (interior side, Z negative)
+      // Mirrored - left-hung door needs right-handed handle on back (from back view, hinge is on right)
+      const handleBack = this.buildLeverHandle(leftHung ? "right" : "left");
+      handleBack.position.set(handleX, handleY, -thick / 2);
+      handleBack.rotation.y = Math.PI; // Face opposite direction
+      group.add(handleBack);
+    }
 
     return group;
   }
@@ -1397,23 +1399,30 @@ export class Engine3d {
     rose.castShadow = true;
     handle.add(rose);
     
+    // === LEVER ASSEMBLY (neck + handle, tilted up 10 degrees) ===
+    const leverAssembly = new THREE.Group();
+    leverAssembly.position.z = roseDepth; // Start at rose surface
+    
+    // Tilt up by 10 degrees (rotate around X axis since lever extends along Z then X)
+    const tiltAngle = dir * 10 * (Math.PI / 180); // 10 degrees in radians
+    leverAssembly.rotation.z = tiltAngle;
+    
     // === NECK (short cylinder connecting rose to handle) ===
-    // Radius 10mm, length 12mm, centered on rose
+    // Radius 10mm, length 12mm
     const neckRadius = 0.010;
     const neckLength = 0.012;
     const neckGeo = new THREE.CylinderGeometry(neckRadius, neckRadius, neckLength, 16);
     neckGeo.rotateX(Math.PI / 2); // Point along Z axis (out from door)
     const neck = new THREE.Mesh(neckGeo, this.handleMat);
-    neck.position.z = roseDepth + neckLength / 2;
+    neck.position.z = neckLength / 2;
     neck.castShadow = true;
-    handle.add(neck);
+    leverAssembly.add(neck);
     
     // === HANDLE (swept along Bezier curve) ===
     // Profile radius 8mm, total length ~110mm
-    // Starts horizontal, arcs slightly up, then gently down
     const handleRadius = 0.008;
     const handleLength = 0.110;
-    const neckEndZ = roseDepth + neckLength;
+    const neckEndZ = neckLength;
     
     // Bezier curve: starts at neck end, goes horizontal (along X), 
     // arcs slightly up then gently tapers down
@@ -1427,21 +1436,23 @@ export class Engine3d {
     const handleGeo = new THREE.TubeGeometry(curve, 32, handleRadius, 12, false);
     const handleMesh = new THREE.Mesh(handleGeo, this.handleMat);
     handleMesh.castShadow = true;
-    handle.add(handleMesh);
+    leverAssembly.add(handleMesh);
     
     // === START CAP (where handle meets neck) ===
     const startCapGeo = new THREE.SphereGeometry(handleRadius, 12, 8);
     const startCap = new THREE.Mesh(startCapGeo, this.handleMat);
     startCap.position.copy(curve.getPoint(0));
     startCap.castShadow = true;
-    handle.add(startCap);
+    leverAssembly.add(startCap);
     
     // === TIP (rounded end cap) ===
     const tipGeo = new THREE.SphereGeometry(handleRadius * 0.9, 12, 8);
     const tip = new THREE.Mesh(tipGeo, this.handleMat);
     tip.position.copy(curve.getPoint(1));
     tip.castShadow = true;
-    handle.add(tip);
+    leverAssembly.add(tip);
+    
+    handle.add(leverAssembly);
     
     return handle;
   }
