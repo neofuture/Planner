@@ -588,16 +588,9 @@ export class Engine3d {
         const iw = ins.width * MM_TO_M;
         const ih = ins.height * MM_TO_M;
         const sd = ins.type === "window" ? 0.04 : 0;
-        // Compute miter offset at opening location
-        const tLeft = Math.max(0, Math.min(1, il / len));
-        const tRight = Math.max(0, Math.min(1, (il + iw) / len));
-        const miterLeft = ms + (me - ms) * tLeft;
-        const miterRight = ms + (me - ms) * tRight;
-        // Extend chamfer gap to cover miter offset
-        const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
-        const fg = (ins.type === "door" ? 0.005 : 0.002) + maxMiter;
-        this.addOpeningChamfer(p1, angle, il - fg, ib - sd - fg, iw + fg * 2, ih + sd + fg * 2, wallT, ins.type === "door", miterLeft, miterRight);
-        this.addInset(ins, p1, angle, wallT, roomShape, miterLeft, miterRight);
+        const fg = ins.type === "door" ? 0.005 : 0.002;
+        this.addOpeningChamfer(p1, angle, il - fg, ib - sd - fg, iw + fg * 2, ih + sd + fg * 2, wallT, ins.type === "door");
+        this.addInset(ins, p1, angle, wallT, roomShape);
       }
     }
   }
@@ -610,13 +603,9 @@ export class Engine3d {
     w: number,
     h: number,
     wallT: number,
-    skipBottom = false,
-    miterLeft = 0,
-    miterRight = 0
+    skipBottom = false
   ) {
-    // Increase chamfer size to cover miter offset
-    const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
-    const c = 0.025 + maxMiter;
+    const c = 0.025;
 
     for (const exterior of [false, true]) {
       const fz = exterior ? wallT : 0;
@@ -688,23 +677,6 @@ export class Engine3d {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       geo.setIndex(idx);
-      
-      // Apply miter offset to chamfer vertices
-      if (Math.abs(miterLeft) > 0.0001 || Math.abs(miterRight) > 0.0001) {
-        const posAttr = geo.getAttribute("position");
-        const arr = posAttr.array as Float32Array;
-        for (let vi = 0; vi < posAttr.count; vi++) {
-          const x = arr[vi * 3];
-          const z = arr[vi * 3 + 2];
-          // Interpolate miter based on x position within opening
-          const t = Math.max(0, Math.min(1, (x - l) / w));
-          const miter = miterLeft + (miterRight - miterLeft) * t;
-          // Apply miter based on z depth (more shift at exterior)
-          arr[vi * 3] += (z / wallT) * miter;
-        }
-        posAttr.needsUpdate = true;
-      }
-      
       geo.computeVertexNormals();
 
       const chamferMesh = new THREE.Mesh(geo, this.wallExtMat);
@@ -721,9 +693,7 @@ export class Engine3d {
     wallStart: Point,
     wallAngle: number,
     wallT: number,
-    roomShape: RoomShape,
-    miterLeft = 0,
-    miterRight = 0
+    roomShape: RoomShape
   ) {
     const l = ins.positionLeft * MM_TO_M;
     const b = ins.positionGround * MM_TO_M;
@@ -1064,15 +1034,12 @@ export class Engine3d {
     if (ins.type === "door") {
       const df = 0.06;
       const gap = 0.01;
-      const ext = 0.008; // Small extension to close gap with wall hole
       const preset = ins.doorStyle ? DOOR_PRESETS[ins.doorStyle] : null;
       const panelThick = (preset?.thickness ?? 35) * MM_TO_M;
 
-      // Frame extends slightly beyond door dimensions to fill chamfer gap
-      // Apply miter adjustment to door frames
-      const frameTop = this.addMiteredBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
-      const frameLeft = this.addMiteredBox(parent, l - ext, b, df + ext, h + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
-      const frameRight = this.addMiteredBox(parent, l + w - df, b, df + ext, h + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
+      const frameTop = this.addBox(parent, l, b + h - df, w, df, wallT, this.frameMat);
+      const frameLeft = this.addBox(parent, l, b, df, h, wallT, this.frameMat);
+      const frameRight = this.addBox(parent, l + w - df, b, df, h, wallT, this.frameMat);
       const frameMeshes = [frameTop, frameLeft, frameRight];
 
       const innerW = w - df * 2;
@@ -1400,48 +1367,6 @@ export class Engine3d {
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x + w / 2, y + h / 2, d / 2);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
-    return mesh;
-  }
-
-  private addMiteredBox(
-    parent: THREE.Group,
-    x: number,
-    y: number,
-    bw: number,
-    bh: number,
-    d: number,
-    mat: THREE.Material,
-    openingL: number,
-    openingW: number,
-    miterLeft: number,
-    miterRight: number
-  ): THREE.Mesh {
-    const geo = new THREE.BoxGeometry(bw, bh, d);
-    
-    // Apply miter adjustment to vertices
-    if (Math.abs(miterLeft) > 0.0001 || Math.abs(miterRight) > 0.0001) {
-      const posAttr = geo.getAttribute("position");
-      const arr = posAttr.array as Float32Array;
-      for (let vi = 0; vi < posAttr.count; vi++) {
-        // Vertex position in local box space (centered)
-        const vx = arr[vi * 3];
-        const vz = arr[vi * 3 + 2];
-        // Convert to world position within opening
-        const worldX = x + bw / 2 + vx;
-        // Interpolate miter based on x position within opening
-        const t = Math.max(0, Math.min(1, (worldX - openingL) / openingW));
-        const miter = miterLeft + (miterRight - miterLeft) * t;
-        // Apply miter based on z depth (more shift at exterior, z=d/2)
-        arr[vi * 3] += ((vz + d / 2) / d) * miter;
-      }
-      posAttr.needsUpdate = true;
-    }
-    
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x + bw / 2, y + bh / 2, d / 2);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
