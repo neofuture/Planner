@@ -206,6 +206,8 @@ export class Engine3d {
       }
       
       canvas.focus();
+      // Request pointer lock for smooth FPS-style camera control
+      canvas.requestPointerLock();
     };
     this._onMouseUp = (e: MouseEvent) => {
       if (e.button !== 0) return;
@@ -214,6 +216,8 @@ export class Engine3d {
       const clickDuration = performance.now() - mouseDownTime;
       this._isDragging = false;
       pendingDoorHit = null;
+      // Release pointer lock
+      document.exitPointerLock();
       // Quick click with door target = toggle door
       if (wasDragging && clickDuration < CLICK_TIME_MS && hitRef) {
         const op = hitRef.opening;
@@ -228,7 +232,7 @@ export class Engine3d {
     };
     this._onMouseMove = (e: MouseEvent) => {
       if (!this._isDragging) return;
-      // Rotate camera while dragging
+      // Rotate camera while dragging (movementX/Y work with pointer lock)
       this._targetYaw -= e.movementX * 0.002;
       this._targetPitch += e.movementY * 0.002 * (this.invertY ? 1 : -1);
       this._targetPitch = Math.max(this._minPitch, Math.min(this._maxPitch, this._targetPitch));
