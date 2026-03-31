@@ -524,6 +524,8 @@ export class Engine3d {
       shape.lineTo(0, wallH);
       shape.closePath();
 
+      // Store hole bounds for miter exclusion
+      const holeBounds: { hL: number; hR: number; hB: number; hT: number }[] = [];
       for (const ins of insets) {
         const l = ins.positionLeft * MM_TO_M;
         const b = ins.positionGround * MM_TO_M;
@@ -536,6 +538,7 @@ export class Engine3d {
         const hR = Math.min(len - eps, l + w + hm);
         const hB = Math.max(eps, b - sillDrop - hm);
         const hT = Math.min(wallH - eps, b + h + hm);
+        holeBounds.push({ hL, hR, hB, hT });
         const hole = new THREE.Path();
         hole.moveTo(hL, hB);
         hole.lineTo(hR, hB);
@@ -560,8 +563,22 @@ export class Engine3d {
           const z = arr[vi * 3 + 2];
           if (z > 0.0001) {
             const x = arr[vi * 3];
-            const t = Math.max(0, Math.min(1, x / len));
-            arr[vi * 3] += (z / wallT) * (ms + (me - ms) * t);
+            const y = arr[vi * 3 + 1];
+            // Skip vertices that are on hole edges (keep holes perpendicular)
+            let isHoleEdge = false;
+            for (const hb of holeBounds) {
+              // Check if vertex is on the edge of this hole
+              const onHoleX = (Math.abs(x - hb.hL) < 0.001 || Math.abs(x - hb.hR) < 0.001) && y >= hb.hB - 0.001 && y <= hb.hT + 0.001;
+              const onHoleY = (Math.abs(y - hb.hB) < 0.001 || Math.abs(y - hb.hT) < 0.001) && x >= hb.hL - 0.001 && x <= hb.hR + 0.001;
+              if (onHoleX || onHoleY) {
+                isHoleEdge = true;
+                break;
+              }
+            }
+            if (!isHoleEdge) {
+              const t = Math.max(0, Math.min(1, x / len));
+              arr[vi * 3] += (z / wallT) * (ms + (me - ms) * t);
+            }
           }
         }
         posAttr.needsUpdate = true;
