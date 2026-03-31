@@ -116,6 +116,13 @@ export class Engine3d {
     side: THREE.DoubleSide,
   });
 
+  private handleMat = new THREE.MeshStandardMaterial({
+    name: "handle",
+    color: 0xc0c0c0,
+    roughness: 0.15,
+    metalness: 0.95,
+  });
+
   private envMap: THREE.Texture | null = null;
   private groundMesh: THREE.Mesh | null = null;
 
@@ -176,19 +183,24 @@ export class Engine3d {
     // Track time to distinguish click (door) vs drag (look)
     let mouseDownTime = 0;
     let pendingDoorHit: DoorPivotRef | null = null;
-    const CLICK_TIME_MS = 250; // ms - clicks shorter than this toggle doors
+    const CLICK_TIME_MS = 400; // ms - clicks shorter than this toggle doors
     
     this._onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       this._isDragging = true;
       mouseDownTime = performance.now();
       
-      // Raycast to find what we actually clicked on
+      // Raycast to find what we actually clicked on using mouse position
       this.camera.updateMatrixWorld(true);
       this.scene.updateMatrixWorld(true);
-      const camDir = new THREE.Vector3();
-      this.camera.getWorldDirection(camDir);
-      this.raycaster.set(this.camera.position.clone(), camDir);
+      
+      // Convert mouse position to normalized device coordinates (-1 to +1)
+      const rect = canvas.getBoundingClientRect();
+      const mouseNDC = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      this.raycaster.setFromCamera(mouseNDC, this.camera);
       
       // Raycast against door meshes specifically (doors and their frames)
       const hits = this.raycaster.intersectObjects(this.doorMeshes, false);
@@ -988,7 +1000,32 @@ export class Engine3d {
 
             parent.add(pivot);
             const centerOffset = leftHung ? clW / 2 : -clW / 2;
-            this.doorPivots.push({ pivot, opening: op, leftHung, outward, targetDeg: op.degreesOpen, centerOffset });
+            const ref = { pivot, opening: op, leftHung, outward, targetDeg: op.degreesOpen, centerOffset };
+            this.doorPivots.push(ref);
+            
+            // Add window sash meshes to doorMeshes for click detection
+            pivot.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.userData.doorRef = ref;
+                child.geometry.computeBoundingBox();
+                child.geometry.computeBoundingSphere();
+                this.doorMeshes.push(child);
+              }
+            });
+            
+            // Add invisible clickable plane in the sash opening area
+            const clickPlaneX = l + (clL + clR) / 2;
+            const clickPlaneY = b + intFW + gap + pH / 2;
+            const clickPlaneZ = mid;
+            const clickPlaneMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+            const clickPlaneGeo = new THREE.PlaneGeometry(clW, pH);
+            const clickPlane = new THREE.Mesh(clickPlaneGeo, clickPlaneMat);
+            clickPlane.position.set(clickPlaneX, clickPlaneY, clickPlaneZ);
+            clickPlane.userData.doorRef = ref;
+            clickPlane.geometry.computeBoundingBox();
+            clickPlane.geometry.computeBoundingSphere();
+            parent.add(clickPlane);
+            this.doorMeshes.push(clickPlane);
           } else if (op.hanging === "top" || op.hanging === "bottom") {
             const oh = (op.height ?? ins.height) * MM_TO_M;
             const topHung = op.hanging === "top";
@@ -1035,14 +1072,39 @@ export class Engine3d {
             );
 
             parent.add(pivot);
-            this.doorPivots.push({
+            const ref = {
               pivot,
               opening: op,
               leftHung: false,
               outward,
               targetDeg: op.degreesOpen,
               centerOffset: 0,
+            };
+            this.doorPivots.push(ref);
+            
+            // Add window sash meshes to doorMeshes for click detection
+            pivot.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.userData.doorRef = ref;
+                child.geometry.computeBoundingBox();
+                child.geometry.computeBoundingSphere();
+                this.doorMeshes.push(child);
+              }
             });
+            
+            // Add invisible clickable plane in the sash opening area
+            const clickPlaneX = l + (clL + clR) / 2;
+            const clickPlaneY = topHung ? b + h - intFW - sH / 2 : b + intFW + sH / 2;
+            const clickPlaneZ = mid;
+            const clickPlaneMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+            const clickPlaneGeo = new THREE.PlaneGeometry(clW, sH);
+            const clickPlane = new THREE.Mesh(clickPlaneGeo, clickPlaneMat);
+            clickPlane.position.set(clickPlaneX, clickPlaneY, clickPlaneZ);
+            clickPlane.userData.doorRef = ref;
+            clickPlane.geometry.computeBoundingBox();
+            clickPlane.geometry.computeBoundingSphere();
+            parent.add(clickPlane);
+            this.doorMeshes.push(clickPlane);
           }
         }
       }
@@ -1058,15 +1120,51 @@ export class Engine3d {
       const stopW = 0.012; // 12mm wide
       const stopD = 0.010; // 10mm deep
 
-      // Extend frame slightly to fill any gaps at wall edges
+      // Create U-shaped frame as single extruded shape to avoid corner seams
       const ext = 0.008;
-      const frameTop = this.addBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat);
-      const frameLeft = this.addBox(parent, l - ext, b, df + ext, h + ext, wallT, this.frameMat);
-      const frameRight = this.addBox(parent, l + w - df, b, df + ext, h + ext, wallT, this.frameMat);
-      const frameMeshes = [frameTop, frameLeft, frameRight];
+      const frameShape = new THREE.Shape();
+      // Outer rectangle (with extensions)
+      frameShape.moveTo(-ext, 0);
+      frameShape.lineTo(w + ext, 0);
+      frameShape.lineTo(w + ext, h + ext);
+      frameShape.lineTo(-ext, h + ext);
+      frameShape.closePath();
+      // Inner rectangle (hole) - creates U shape
+      const hole = new THREE.Path();
+      hole.moveTo(df, 0);
+      hole.lineTo(df, h - df);
+      hole.lineTo(w - df, h - df);
+      hole.lineTo(w - df, 0);
+      hole.closePath();
+      frameShape.holes.push(hole);
+      
+      const frameGeo = new THREE.ExtrudeGeometry(frameShape, {
+        depth: wallT,
+        bevelEnabled: false,
+      });
+      const frameMesh = new THREE.Mesh(frameGeo, this.frameMat);
+      frameMesh.position.set(l, b, 0);
+      frameMesh.castShadow = true;
+      frameMesh.receiveShadow = true;
+      parent.add(frameMesh);
+      const frameMeshes = [frameMesh];
 
       const innerW = w - df * 2;
       const innerH = h - df;
+
+      // Pre-calculate meeting edges to detect double doors sharing a meeting stile
+      const scale = innerW / w;
+      const meetingEdges = new Map<number, number>(); // edge position -> count
+      for (const op of ins.openings) {
+        const ow = op.width * MM_TO_M;
+        const disp = op.displacement * MM_TO_M;
+        // Non-hinge edge position (in inner coordinates)
+        const nonHingeEdge = op.hanging === "left"
+          ? (disp + ow) * scale
+          : (disp - ow) * scale;
+        const rounded = Math.round(nonHingeEdge * 1000); // round to mm for comparison
+        meetingEdges.set(rounded, (meetingEdges.get(rounded) ?? 0) + 1);
+      }
 
       for (const op of ins.openings) {
         const ow = op.width * MM_TO_M;
@@ -1074,8 +1172,14 @@ export class Engine3d {
         const leftHung = op.hanging === "left";
         const outward = op.open === "outwards";
 
-        const scale = innerW / w;
-        const panelW = ow * scale - gap;
+        // Check if this door's non-hinge edge meets another door
+        const nonHingeEdge = leftHung ? (disp + ow) * scale : (disp - ow) * scale;
+        const rounded = Math.round(nonHingeEdge * 1000);
+        const hasMeetingStile = (meetingEdges.get(rounded) ?? 0) >= 2;
+        
+        // Use minimal gap (0.5mm) where doors meet to eliminate visible gap, full gap (10mm) at frame
+        const doorGap = hasMeetingStile ? 0.0005 : gap;
+        const panelW = ow * scale - doorGap;
         const panelH = innerH - gap;
 
         // Door stop position: on the side the door closes against
@@ -1085,33 +1189,32 @@ export class Engine3d {
         const stopInnerL = l + df;
         const stopInnerW = w - df * 2;
 
-        // Add door stop moulding (top, left, right)
-        const stopTop = new THREE.Mesh(
-          new THREE.BoxGeometry(stopInnerW, stopW, stopD),
-          this.frameMat
-        );
-        stopTop.position.set(stopInnerL + stopInnerW / 2, b + innerH - stopW / 2, stopZ);
-        stopTop.castShadow = true;
-        stopTop.receiveShadow = true;
-        parent.add(stopTop);
-
-        const stopLeft = new THREE.Mesh(
-          new THREE.BoxGeometry(stopW, innerH, stopD),
-          this.frameMat
-        );
-        stopLeft.position.set(stopInnerL + stopW / 2, b + innerH / 2, stopZ);
-        stopLeft.castShadow = true;
-        stopLeft.receiveShadow = true;
-        parent.add(stopLeft);
-
-        const stopRight = new THREE.Mesh(
-          new THREE.BoxGeometry(stopW, innerH, stopD),
-          this.frameMat
-        );
-        stopRight.position.set(l + w - df - stopW / 2, b + innerH / 2, stopZ);
-        stopRight.castShadow = true;
-        stopRight.receiveShadow = true;
-        parent.add(stopRight);
+        // Add door stop moulding as single U-shaped extrusion to avoid corner seams
+        const stopShape = new THREE.Shape();
+        // Outer U shape
+        stopShape.moveTo(0, 0);
+        stopShape.lineTo(0, innerH);
+        stopShape.lineTo(stopW, innerH);
+        stopShape.lineTo(stopW, innerH - stopW);
+        stopShape.lineTo(stopInnerW - stopW, innerH - stopW);
+        stopShape.lineTo(stopInnerW - stopW, innerH);
+        stopShape.lineTo(stopInnerW, innerH);
+        stopShape.lineTo(stopInnerW, 0);
+        stopShape.lineTo(stopInnerW - stopW, 0);
+        stopShape.lineTo(stopInnerW - stopW, innerH - stopW);
+        stopShape.lineTo(stopW, innerH - stopW);
+        stopShape.lineTo(stopW, 0);
+        stopShape.closePath();
+        
+        const stopGeo = new THREE.ExtrudeGeometry(stopShape, {
+          depth: stopD,
+          bevelEnabled: false,
+        });
+        const stopMesh = new THREE.Mesh(stopGeo, this.frameMat);
+        stopMesh.position.set(stopInnerL, b, stopZ - stopD / 2);
+        stopMesh.castShadow = true;
+        stopMesh.receiveShadow = true;
+        parent.add(stopMesh);
 
         const pivot = new THREE.Group();
         const pivotX = leftHung
@@ -1123,7 +1226,7 @@ export class Engine3d {
         const pivotZ = outward ? 0 : wallT;
         pivot.position.set(pivotX, b, pivotZ);
 
-        const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick);
+        const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick, leftHung);
         // Door sits INSIDE the frame at the hinge face
         // Outward: hinge at 0, door from 0 to panelThick
         // Inward: hinge at wallT, door from wallT-panelThick to wallT
@@ -1149,6 +1252,30 @@ export class Engine3d {
           }
         });
 
+        // Add invisible clickable plane in the door opening area
+        // This allows clicking on empty space to toggle the door even when it's open
+        const clickPlaneW = panelW;
+        const clickPlaneH = panelH;
+        const clickPlaneX = leftHung
+          ? l + df + (disp / w) * innerW + clickPlaneW / 2
+          : l + w - df - ((w - disp) / w) * innerW - clickPlaneW / 2;
+        const clickPlaneY = b + clickPlaneH / 2;
+        const clickPlaneZ = wallT / 2;
+        
+        const clickPlaneMat = new THREE.MeshBasicMaterial({
+          visible: false,
+          side: THREE.DoubleSide,
+        });
+        const clickPlaneGeo = new THREE.PlaneGeometry(clickPlaneW, clickPlaneH);
+        const clickPlane = new THREE.Mesh(clickPlaneGeo, clickPlaneMat);
+        clickPlane.position.set(clickPlaneX, clickPlaneY, clickPlaneZ);
+        clickPlane.rotation.y = 0; // Face along Z axis (through the wall)
+        clickPlane.userData.doorRef = ref;
+        clickPlane.geometry.computeBoundingBox();
+        clickPlane.geometry.computeBoundingSphere();
+        parent.add(clickPlane);
+        this.doorMeshes.push(clickPlane);
+
         // Also set doorRef on frame meshes so clicking the frame toggles the door
         // For multiple openings, the first opening's ref is used for the frame
         if (ins.openings.indexOf(op) === 0) {
@@ -1159,14 +1286,13 @@ export class Engine3d {
             this.doorMeshes.push(fm);
           }
         }
-        console.log("Door created[" + this._id + "], total doorMeshes:", this.doorMeshes.length);
       }
     }
 
     this.roomGroup.add(parent);
   }
 
-  private buildPanelledDoor(w: number, h: number, thick: number): THREE.Group {
+  private buildPanelledDoor(w: number, h: number, thick: number, leftHung: boolean): THREE.Group {
     const group = new THREE.Group();
     const recess = 0.003;
     const panelDepth = thick - recess * 2;
@@ -1231,7 +1357,93 @@ export class Engine3d {
       bar(rightCX, cy, pnlW, topMuntinH, panelDepth);
     }
 
+    // Add lever handles on both sides of the door
+    // Handle is on the opposite side from the hinge
+    // UK standard handle height: 1000-1050mm from floor (using 1025mm)
+    const handleX = leftHung ? hw - stileW / 2 : -hw + stileW / 2;
+    const handleY = -hh + 1.025; // 1025mm from bottom of door
+    
+    // Front handle (exterior side, Z positive)
+    // Use left-handed model for left-hung doors (lever points left)
+    // Use right-handed model for right-hung doors (lever points right)
+    const handleFront = this.buildLeverHandle(leftHung ? "left" : "right");
+    handleFront.position.set(handleX, handleY, thick / 2);
+    group.add(handleFront);
+    
+    // Back handle (interior side, Z negative)
+    // Mirrored - left-hung door needs right-handed handle on back (from back view, hinge is on right)
+    const handleBack = this.buildLeverHandle(leftHung ? "right" : "left");
+    handleBack.position.set(handleX, handleY, -thick / 2);
+    handleBack.rotation.y = Math.PI; // Face opposite direction
+    group.add(handleBack);
+
     return group;
+  }
+
+  private buildLeverHandle(hand: "left" | "right"): THREE.Group {
+    const handle = new THREE.Group();
+    
+    // Direction: left = lever extends in -X, right = lever extends in +X
+    const dir = hand === "left" ? -1 : 1;
+    
+    // === ROSETTE (flush to door surface at Z=0) ===
+    // Circular backplate: radius 26mm, depth 8mm
+    const roseRadius = 0.026;
+    const roseDepth = 0.008;
+    const roseGeo = new THREE.CylinderGeometry(roseRadius, roseRadius, roseDepth, 32);
+    roseGeo.rotateX(Math.PI / 2);
+    const rose = new THREE.Mesh(roseGeo, this.handleMat);
+    rose.position.z = roseDepth / 2;
+    rose.castShadow = true;
+    handle.add(rose);
+    
+    // === NECK (short cylinder connecting rose to handle) ===
+    // Radius 10mm, length 12mm, centered on rose
+    const neckRadius = 0.010;
+    const neckLength = 0.012;
+    const neckGeo = new THREE.CylinderGeometry(neckRadius, neckRadius, neckLength, 16);
+    neckGeo.rotateX(Math.PI / 2); // Point along Z axis (out from door)
+    const neck = new THREE.Mesh(neckGeo, this.handleMat);
+    neck.position.z = roseDepth + neckLength / 2;
+    neck.castShadow = true;
+    handle.add(neck);
+    
+    // === HANDLE (swept along Bezier curve) ===
+    // Profile radius 8mm, total length ~110mm
+    // Starts horizontal, arcs slightly up, then gently down
+    const handleRadius = 0.008;
+    const handleLength = 0.110;
+    const neckEndZ = roseDepth + neckLength;
+    
+    // Bezier curve: starts at neck end, goes horizontal (along X), 
+    // arcs slightly up then gently tapers down
+    const curve = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(0, 0, neckEndZ),                                    // Start at neck
+      new THREE.Vector3(dir * handleLength * 0.3, 0.008, neckEndZ),         // Control 1: slight rise
+      new THREE.Vector3(dir * handleLength * 0.7, 0.005, neckEndZ),         // Control 2: begin descent
+      new THREE.Vector3(dir * handleLength, -0.015, neckEndZ)               // End: curved down
+    );
+    
+    const handleGeo = new THREE.TubeGeometry(curve, 32, handleRadius, 12, false);
+    const handleMesh = new THREE.Mesh(handleGeo, this.handleMat);
+    handleMesh.castShadow = true;
+    handle.add(handleMesh);
+    
+    // === START CAP (where handle meets neck) ===
+    const startCapGeo = new THREE.SphereGeometry(handleRadius, 12, 8);
+    const startCap = new THREE.Mesh(startCapGeo, this.handleMat);
+    startCap.position.copy(curve.getPoint(0));
+    startCap.castShadow = true;
+    handle.add(startCap);
+    
+    // === TIP (rounded end cap) ===
+    const tipGeo = new THREE.SphereGeometry(handleRadius * 0.9, 12, 8);
+    const tip = new THREE.Mesh(tipGeo, this.handleMat);
+    tip.position.copy(curve.getPoint(1));
+    tip.castShadow = true;
+    handle.add(tip);
+    
+    return handle;
   }
 
   private addFrameBar(
@@ -1652,6 +1864,7 @@ export class Engine3d {
     this.glassMat.dispose();
     this.frameMat.dispose();
     this.doorMat.dispose();
+    this.handleMat.dispose();
     this.envMap?.dispose();
     if (this.groundMesh) {
       this.groundMesh.geometry.dispose();
