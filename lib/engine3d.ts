@@ -1076,13 +1076,17 @@ export class Engine3d {
         const pivotX = leftHung
           ? l + df + (disp / w) * innerW
           : l + w - df - ((w - disp) / w) * innerW;
-        pivot.position.set(pivotX, b, wallT / 2);
+        // Door is flush with the side it opens towards
+        const pivotZ = outward ? wallT : 0;
+        pivot.position.set(pivotX, b, pivotZ);
 
         const doorGroup = this.buildPanelledDoor(panelW, panelH, panelThick);
+        // Offset door panel to be on the correct side of the pivot
+        const doorZOffset = outward ? -panelThick / 2 : panelThick / 2;
         doorGroup.position.set(
           leftHung ? panelW / 2 : -panelW / 2,
           panelH / 2,
-          0
+          doorZOffset
         );
 
         pivot.add(doorGroup);

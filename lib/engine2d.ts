@@ -1618,12 +1618,16 @@ export class Engine2d {
               const degreesOpen = insetItem.degreesOpen * (Math.PI / 180);
               this.contextInsets.lineWidth = 30 * this.scale;
               this.contextInsets.lineCap = "round";
+              // Door hinge is on the side it opens towards
+              // Inward = interior edge, Outward = exterior edge
+              const hingeEdgeIn = this.calculatePerpendicularLine(A.x, B.x, A.y, B.y, 0);
+              const hingeEdgeOut = this.calculatePerpendicularLine(A.x, B.x, A.y, B.y, this.wallWidth * this.scale);
               if (insetItem.open === "inwards") {
                 if (this.showFlooring)
                   this.contextInsets.strokeStyle = "#ffffff";
                 const displacement = this.calculatePositionAlongWall(
-                  mA,
-                  mB,
+                  { x: hingeEdgeIn[0].x, y: hingeEdgeIn[0].y },
+                  { x: hingeEdgeIn[1].x, y: hingeEdgeIn[1].y },
                   insetItem.displacement * this.scale
                 );
 
@@ -1724,9 +1728,10 @@ export class Engine2d {
                   this.contextInsets.stroke();
                 }
               } else {
+                // Outward opening - hinge on exterior edge
                 const displacement = this.calculatePositionAlongWall(
-                  mA,
-                  mB,
+                  { x: hingeEdgeOut[0].x, y: hingeEdgeOut[0].y },
+                  { x: hingeEdgeOut[1].x, y: hingeEdgeOut[1].y },
                   insetItem.displacement * this.scale
                 );
                 if (insetItem.hanging === "left") {
