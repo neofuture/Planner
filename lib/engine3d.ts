@@ -1034,12 +1034,16 @@ export class Engine3d {
     if (ins.type === "door") {
       const df = 0.06;
       const gap = 0.01;
+      const frameGap = 0.006; // Extra height to close gap with wall hole
+      const miterMargin = 0.15; // Extra depth to account for angled walls
+      const frameDepth = wallT + miterMargin * 2;
+      const frameOffset = -miterMargin; // Shift frame back to extend both sides
       const preset = ins.doorStyle ? DOOR_PRESETS[ins.doorStyle] : null;
       const panelThick = (preset?.thickness ?? 35) * MM_TO_M;
 
-      const frameTop = this.addBox(parent, l, b + h - df, w, df, wallT, this.frameMat);
-      const frameLeft = this.addBox(parent, l, b, df, h, wallT, this.frameMat);
-      const frameRight = this.addBox(parent, l + w - df, b, df, h, wallT, this.frameMat);
+      const frameTop = this.addBoxOffset(parent, l, b + h - df, w, df + frameGap, frameDepth, frameOffset, this.frameMat);
+      const frameLeft = this.addBoxOffset(parent, l, b, df, h + frameGap, frameDepth, frameOffset, this.frameMat);
+      const frameRight = this.addBoxOffset(parent, l + w - df, b, df, h + frameGap, frameDepth, frameOffset, this.frameMat);
       const frameMeshes = [frameTop, frameLeft, frameRight];
 
       const innerW = w - df * 2;
@@ -1367,6 +1371,24 @@ export class Engine3d {
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x + w / 2, y + h / 2, d / 2);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  private addBoxOffset(
+    parent: THREE.Group,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    d: number,
+    zOffset: number,
+    mat: THREE.Material
+  ): THREE.Mesh {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x + w / 2, y + h / 2, d / 2 + zOffset);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
