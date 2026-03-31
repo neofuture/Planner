@@ -1622,76 +1622,89 @@ export class Engine2d {
               // Inward = interior edge, Outward = exterior edge
               const hingeEdgeIn = this.calculatePerpendicularLine(A.x, B.x, A.y, B.y, 0);
               const hingeEdgeOut = this.calculatePerpendicularLine(A.x, B.x, A.y, B.y, this.wallWidth * this.scale);
+              
+              // Check wall direction - walls running right-to-left have reversed visual positions
+              const wallAngle = walls[inset.wall].angle!;
+              const wallReversed = Math.cos(wallAngle) < -0.01;
+              
+              // Calculate visual left and right positions
+              const leftPos = insetItem.displacement;
+              const rightPos = insetItem.displacement + insetItem.width;
+              // For reversed walls, swap which position is visually left vs right
+              const visualLeftPos = wallReversed ? rightPos : leftPos;
+              const visualRightPos = wallReversed ? leftPos : rightPos;
+              
               if (insetItem.open === "inwards") {
                 if (this.showFlooring)
                   this.contextInsets.strokeStyle = "#ffffff";
-                const displacement = this.calculatePositionAlongWall(
-                  { x: hingeEdgeIn[0].x, y: hingeEdgeIn[0].y },
-                  { x: hingeEdgeIn[1].x, y: hingeEdgeIn[1].y },
-                  insetItem.displacement * this.scale
-                );
 
                 if (insetItem.hanging === "left") {
-                  this.contextInsets.beginPath();
-                  this.contextInsets.moveTo(displacement.x, displacement.y);
-                  const X =
-                    insetItem.width *
-                      this.scale *
-                      Math.cos(walls[inset.wall].angle! + degreesOpen) +
-                    displacement.x;
-                  const Y =
-                    insetItem.width *
-                      this.scale *
-                      Math.sin(walls[inset.wall].angle! + degreesOpen) +
-                    displacement.y;
-                  this.contextInsets.lineTo(X, Y);
-                  this.contextInsets.stroke();
-                  if (degreesOpen > 0.1) {
-                    this.contextInsets.beginPath();
-                    this.contextInsets.lineWidth = 2;
-                    this.contextInsets.arc(
-                      displacement.x,
-                      displacement.y,
-                      insetItem.width * this.scale - 20 * this.scale,
-                      walls[inset.wall].angle! + 0.05,
-                      walls[inset.wall].angle! + degreesOpen - 0.05
-                    );
-                    this.contextInsets.stroke();
-                  }
-                } else if (insetItem.hanging === "right") {
-                  // Right-hung: hinge is at the RIGHT edge of the opening
                   const hingePos = this.calculatePositionAlongWall(
                     { x: hingeEdgeIn[0].x, y: hingeEdgeIn[0].y },
                     { x: hingeEdgeIn[1].x, y: hingeEdgeIn[1].y },
-                    (insetItem.displacement + insetItem.width) * this.scale
+                    visualLeftPos * this.scale
                   );
                   this.contextInsets.beginPath();
                   this.contextInsets.moveTo(hingePos.x, hingePos.y);
+                  const doorAngle = wallReversed
+                    ? wallAngle + Math.PI - degreesOpen
+                    : wallAngle + degreesOpen;
                   const X =
-                    insetItem.width *
-                      this.scale *
-                      Math.cos(
-                        walls[inset.wall].angle! + Math.PI - degreesOpen
-                      ) +
-                    hingePos.x;
+                    insetItem.width * this.scale * Math.cos(doorAngle) + hingePos.x;
                   const Y =
-                    insetItem.width *
-                      this.scale *
-                      Math.sin(
-                        walls[inset.wall].angle! + Math.PI - degreesOpen
-                      ) +
-                    hingePos.y;
+                    insetItem.width * this.scale * Math.sin(doorAngle) + hingePos.y;
                   this.contextInsets.lineTo(X, Y);
                   this.contextInsets.stroke();
                   if (degreesOpen > 0.1) {
                     this.contextInsets.beginPath();
                     this.contextInsets.lineWidth = 2;
+                    const arcStart = wallReversed
+                      ? wallAngle + Math.PI - degreesOpen + 0.05
+                      : wallAngle + 0.05;
+                    const arcEnd = wallReversed
+                      ? wallAngle + Math.PI - 0.05
+                      : wallAngle + degreesOpen - 0.05;
                     this.contextInsets.arc(
                       hingePos.x,
                       hingePos.y,
                       insetItem.width * this.scale - 20 * this.scale,
-                      walls[inset.wall].angle! + Math.PI - degreesOpen + 0.05,
-                      walls[inset.wall].angle! + Math.PI - 0.05
+                      arcStart,
+                      arcEnd
+                    );
+                    this.contextInsets.stroke();
+                  }
+                } else if (insetItem.hanging === "right") {
+                  const hingePos = this.calculatePositionAlongWall(
+                    { x: hingeEdgeIn[0].x, y: hingeEdgeIn[0].y },
+                    { x: hingeEdgeIn[1].x, y: hingeEdgeIn[1].y },
+                    visualRightPos * this.scale
+                  );
+                  this.contextInsets.beginPath();
+                  this.contextInsets.moveTo(hingePos.x, hingePos.y);
+                  const doorAngle = wallReversed
+                    ? wallAngle + degreesOpen
+                    : wallAngle + Math.PI - degreesOpen;
+                  const X =
+                    insetItem.width * this.scale * Math.cos(doorAngle) + hingePos.x;
+                  const Y =
+                    insetItem.width * this.scale * Math.sin(doorAngle) + hingePos.y;
+                  this.contextInsets.lineTo(X, Y);
+                  this.contextInsets.stroke();
+                  if (degreesOpen > 0.1) {
+                    this.contextInsets.beginPath();
+                    this.contextInsets.lineWidth = 2;
+                    const arcStart = wallReversed
+                      ? wallAngle + 0.05
+                      : wallAngle + Math.PI - degreesOpen + 0.05;
+                    const arcEnd = wallReversed
+                      ? wallAngle + degreesOpen - 0.05
+                      : wallAngle + Math.PI - 0.05;
+                    this.contextInsets.arc(
+                      hingePos.x,
+                      hingePos.y,
+                      insetItem.width * this.scale - 20 * this.scale,
+                      arcStart,
+                      arcEnd
                     );
                     this.contextInsets.stroke();
                   }
@@ -1735,72 +1748,73 @@ export class Engine2d {
                 }
               } else {
                 // Outward opening - hinge on exterior edge
-                const displacement = this.calculatePositionAlongWall(
-                  { x: hingeEdgeOut[0].x, y: hingeEdgeOut[0].y },
-                  { x: hingeEdgeOut[1].x, y: hingeEdgeOut[1].y },
-                  insetItem.displacement * this.scale
-                );
                 if (insetItem.hanging === "left") {
-                  this.contextInsets.beginPath();
-                  this.contextInsets.moveTo(displacement.x, displacement.y);
-                  const X =
-                    insetItem.width *
-                      this.scale *
-                      Math.cos(walls[inset.wall].angle! - degreesOpen) +
-                    displacement.x;
-                  const Y =
-                    insetItem.width *
-                      this.scale *
-                      Math.sin(walls[inset.wall].angle! - degreesOpen) +
-                    displacement.y;
-                  this.contextInsets.lineTo(X, Y);
-                  this.contextInsets.stroke();
-                  if (degreesOpen > 0.1) {
-                    this.contextInsets.beginPath();
-                    this.contextInsets.lineWidth = 2;
-                    this.contextInsets.arc(
-                      displacement.x,
-                      displacement.y,
-                      insetItem.width * this.scale - 20 * this.scale,
-                      walls[inset.wall].angle! - degreesOpen + 0.05,
-                      walls[inset.wall].angle! - 0.05
-                    );
-                    this.contextInsets.stroke();
-                  }
-                } else if (insetItem.hanging === "right") {
-                  // Right-hung: hinge is at the RIGHT edge of the opening
                   const hingePos = this.calculatePositionAlongWall(
                     { x: hingeEdgeOut[0].x, y: hingeEdgeOut[0].y },
                     { x: hingeEdgeOut[1].x, y: hingeEdgeOut[1].y },
-                    (insetItem.displacement + insetItem.width) * this.scale
+                    visualLeftPos * this.scale
                   );
                   this.contextInsets.beginPath();
                   this.contextInsets.moveTo(hingePos.x, hingePos.y);
+                  const doorAngle = wallReversed
+                    ? wallAngle + Math.PI + degreesOpen
+                    : wallAngle - degreesOpen;
                   const X =
-                    insetItem.width *
-                      this.scale *
-                      Math.cos(
-                        walls[inset.wall].angle! + Math.PI + degreesOpen
-                      ) +
-                    hingePos.x;
+                    insetItem.width * this.scale * Math.cos(doorAngle) + hingePos.x;
                   const Y =
-                    insetItem.width *
-                      this.scale *
-                      Math.sin(
-                        walls[inset.wall].angle! + Math.PI + degreesOpen
-                      ) +
-                    hingePos.y;
+                    insetItem.width * this.scale * Math.sin(doorAngle) + hingePos.y;
                   this.contextInsets.lineTo(X, Y);
                   this.contextInsets.stroke();
                   if (degreesOpen > 0.1) {
                     this.contextInsets.beginPath();
                     this.contextInsets.lineWidth = 2;
+                    const arcStart = wallReversed
+                      ? wallAngle + Math.PI + 0.05
+                      : wallAngle - degreesOpen + 0.05;
+                    const arcEnd = wallReversed
+                      ? wallAngle + Math.PI + degreesOpen - 0.05
+                      : wallAngle - 0.05;
                     this.contextInsets.arc(
                       hingePos.x,
                       hingePos.y,
                       insetItem.width * this.scale - 20 * this.scale,
-                      walls[inset.wall].angle! + Math.PI + 0.05,
-                      walls[inset.wall].angle! + Math.PI + degreesOpen - 0.05
+                      arcStart,
+                      arcEnd
+                    );
+                    this.contextInsets.stroke();
+                  }
+                } else if (insetItem.hanging === "right") {
+                  const hingePos = this.calculatePositionAlongWall(
+                    { x: hingeEdgeOut[0].x, y: hingeEdgeOut[0].y },
+                    { x: hingeEdgeOut[1].x, y: hingeEdgeOut[1].y },
+                    visualRightPos * this.scale
+                  );
+                  this.contextInsets.beginPath();
+                  this.contextInsets.moveTo(hingePos.x, hingePos.y);
+                  const doorAngle = wallReversed
+                    ? wallAngle - degreesOpen
+                    : wallAngle + Math.PI + degreesOpen;
+                  const X =
+                    insetItem.width * this.scale * Math.cos(doorAngle) + hingePos.x;
+                  const Y =
+                    insetItem.width * this.scale * Math.sin(doorAngle) + hingePos.y;
+                  this.contextInsets.lineTo(X, Y);
+                  this.contextInsets.stroke();
+                  if (degreesOpen > 0.1) {
+                    this.contextInsets.beginPath();
+                    this.contextInsets.lineWidth = 2;
+                    const arcStart = wallReversed
+                      ? wallAngle - degreesOpen + 0.05
+                      : wallAngle + Math.PI + 0.05;
+                    const arcEnd = wallReversed
+                      ? wallAngle - 0.05
+                      : wallAngle + Math.PI + degreesOpen - 0.05;
+                    this.contextInsets.arc(
+                      hingePos.x,
+                      hingePos.y,
+                      insetItem.width * this.scale - 20 * this.scale,
+                      arcStart,
+                      arcEnd
                     );
                     this.contextInsets.stroke();
                   }
