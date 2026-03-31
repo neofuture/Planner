@@ -1065,9 +1065,10 @@ export class Engine3d {
       const panelThick = (preset?.thickness ?? 35) * MM_TO_M;
 
       // Frame extends slightly beyond door dimensions to fill chamfer gap
-      const frameTop = this.addBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat);
-      const frameLeft = this.addBox(parent, l - ext, b, df + ext, h + ext, wallT, this.frameMat);
-      const frameRight = this.addBox(parent, l + w - df, b, df + ext, h + ext, wallT, this.frameMat);
+      // Apply miter adjustment to door frames
+      const frameTop = this.addMiteredBox(parent, l - ext, b + h - df, w + ext * 2, df + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
+      const frameLeft = this.addMiteredBox(parent, l - ext, b, df + ext, h + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
+      const frameRight = this.addMiteredBox(parent, l + w - df, b, df + ext, h + ext, wallT, this.frameMat, l, w, miterLeft, miterRight);
       const frameMeshes = [frameTop, frameLeft, frameRight];
 
       const innerW = w - df * 2;
@@ -1395,6 +1396,48 @@ export class Engine3d {
   ): THREE.Mesh {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x + w / 2, y + h / 2, d / 2);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  private addMiteredBox(
+    parent: THREE.Group,
+    x: number,
+    y: number,
+    bw: number,
+    bh: number,
+    d: number,
+    mat: THREE.Material,
+    openingL: number,
+    openingW: number,
+    miterLeft: number,
+    miterRight: number
+  ): THREE.Mesh {
+    const geo = new THREE.BoxGeometry(bw, bh, d);
+    
+    // Apply miter adjustment to vertices
+    if (Math.abs(miterLeft) > 0.0001 || Math.abs(miterRight) > 0.0001) {
+      const posAttr = geo.getAttribute("position");
+      const arr = posAttr.array as Float32Array;
+      for (let vi = 0; vi < posAttr.count; vi++) {
+        // Vertex position in local box space (centered)
+        const vx = arr[vi * 3];
+        const vz = arr[vi * 3 + 2];
+        // Convert to world position within opening
+        const worldX = x + bw / 2 + vx;
+        // Interpolate miter based on x position within opening
+        const t = Math.max(0, Math.min(1, (worldX - openingL) / openingW));
+        const miter = miterLeft + (miterRight - miterLeft) * t;
+        // Apply miter based on z depth (more shift at exterior, z=d/2)
+        arr[vi * 3] += ((vz + d / 2) / d) * miter;
+      }
+      posAttr.needsUpdate = true;
+    }
+    
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x + bw / 2, y + bh / 2, d / 2);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
