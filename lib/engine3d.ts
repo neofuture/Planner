@@ -732,8 +732,10 @@ export class Engine3d {
     parent.rotation.y = -wallAngle;
 
     if (ins.type === "window") {
-      const frameD = 0.10;
-      const mid = frameD / 2;
+      // Extend frame depth to cover miter offset on angled walls
+      const maxMiter = Math.max(Math.abs(miterLeft), Math.abs(miterRight));
+      const frameD = Math.max(0.10, wallT + maxMiter * 2 + 0.02);
+      const mid = wallT / 2; // Center frame in wall thickness
       const innerW = w - frameW * 2;
       const innerH = h - frameW * 2;
 
