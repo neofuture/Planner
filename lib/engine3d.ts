@@ -589,8 +589,13 @@ export class Engine3d {
         const ih = ins.height * MM_TO_M;
         const sd = ins.type === "window" ? 0.04 : 0;
         const fg = ins.type === "door" ? 0.005 : 0.002;
-        this.addOpeningChamfer(p1, angle, il - fg, ib - sd - fg, iw + fg * 2, ih + sd + fg * 2, wallT, ins.type === "door");
-        this.addInset(ins, p1, angle, wallT, roomShape);
+        // Compute miter offset at opening location
+        const tLeft = Math.max(0, Math.min(1, il / len));
+        const tRight = Math.max(0, Math.min(1, (il + iw) / len));
+        const miterLeft = ms + (me - ms) * tLeft;
+        const miterRight = ms + (me - ms) * tRight;
+        this.addOpeningChamfer(p1, angle, il - fg, ib - sd - fg, iw + fg * 2, ih + sd + fg * 2, wallT, ins.type === "door", miterLeft, miterRight);
+        this.addInset(ins, p1, angle, wallT, roomShape, miterLeft, miterRight);
       }
     }
   }
@@ -603,7 +608,9 @@ export class Engine3d {
     w: number,
     h: number,
     wallT: number,
-    skipBottom = false
+    skipBottom = false,
+    miterLeft = 0,
+    miterRight = 0
   ) {
     const c = 0.025;
 
@@ -677,6 +684,23 @@ export class Engine3d {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
       geo.setIndex(idx);
+      
+      // Apply miter offset to chamfer vertices
+      if (Math.abs(miterLeft) > 0.0001 || Math.abs(miterRight) > 0.0001) {
+        const posAttr = geo.getAttribute("position");
+        const arr = posAttr.array as Float32Array;
+        for (let vi = 0; vi < posAttr.count; vi++) {
+          const x = arr[vi * 3];
+          const z = arr[vi * 3 + 2];
+          // Interpolate miter based on x position within opening
+          const t = Math.max(0, Math.min(1, (x - l) / w));
+          const miter = miterLeft + (miterRight - miterLeft) * t;
+          // Apply miter based on z depth (more shift at exterior)
+          arr[vi * 3] += (z / wallT) * miter;
+        }
+        posAttr.needsUpdate = true;
+      }
+      
       geo.computeVertexNormals();
 
       const chamferMesh = new THREE.Mesh(geo, this.wallExtMat);
@@ -693,7 +717,9 @@ export class Engine3d {
     wallStart: Point,
     wallAngle: number,
     wallT: number,
-    roomShape: RoomShape
+    roomShape: RoomShape,
+    miterLeft = 0,
+    miterRight = 0
   ) {
     const l = ins.positionLeft * MM_TO_M;
     const b = ins.positionGround * MM_TO_M;
