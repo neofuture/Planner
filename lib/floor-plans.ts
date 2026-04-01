@@ -330,6 +330,7 @@ export const floorPlan3: FloorPlan = {
     { wall: 1, kneeWallHeight: 2350, roofAngle: 45 },
   ],
   lights: [
+    { id: "pendant-1", type: "pendant", x: 2100, y: 1500, cableLength: 150, colorTemp: 5700, intensity: 1 },
     { id: "spot-1", type: "spotlight", x: 1200, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
     { id: "spot-2", type: "spotlight", x: 3000, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
     { id: "spot-3", type: "spotlight", x: 4800, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },

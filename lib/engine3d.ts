@@ -657,6 +657,10 @@ export class Engine3d {
     this.roomGroup.add(mesh);
   }
 
+  private getWallIntMat(_wallIdx: number): THREE.Material {
+    return this.wallIntMat;
+  }
+
   private addCeiling(roomShape: RoomShape) {
     const pts = getPerimeter(roomShape);
     const ceilingH = getCeilingHeight(roomShape) * MM_TO_M;
@@ -752,6 +756,7 @@ export class Engine3d {
 
     const vertices: number[] = [];
     const indices: number[] = [];
+    const soffitQuads: { verts: number[]; wallIdx: number }[] = [];
 
     // Helper: find intersection of two 2D lines
     // Line 1: p1 + t * d1, Line 2: p2 + s * d2
@@ -844,13 +849,43 @@ export class Engine3d {
       indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
 
       // Vertical soffit: closes gap between kneeH and ceilingH at wall face
-      const soffitIdx = vertices.length / 3;
-      vertices.push(base1x, slope.kneeH, base1z);
-      vertices.push(base2x, slope.kneeH, base2z);
-      vertices.push(base2x, ceilingH, base2z);
-      vertices.push(base1x, ceilingH, base1z);
-      indices.push(soffitIdx, soffitIdx + 1, soffitIdx + 2);
-      indices.push(soffitIdx, soffitIdx + 2, soffitIdx + 3);
+      soffitQuads.push({
+        verts: [
+          base1x, slope.kneeH, base1z,
+          base2x, slope.kneeH, base2z,
+          base2x, ceilingH, base2z,
+          base1x, ceilingH, base1z,
+        ],
+        wallIdx: i,
+      });
+
+      // Triangular end caps at corners where slope meets non-sloped walls
+      // Each cap is the slope cross-section, parallel to the adjacent wall
+      // Winding must face into the room (away from the adjacent wall)
+      if (!hasPrevSlope) {
+        const rx = ip1.x + perp.nx * slope.reach;
+        const rz = ip1.z + perp.nz * slope.reach;
+        soffitQuads.push({
+          verts: [
+            ip1.x, slope.kneeH, ip1.z,
+            rx, ceilingH, rz,
+            ip1.x, ceilingH, ip1.z,
+          ],
+          wallIdx: prevWall,
+        });
+      }
+      if (!hasNextSlope) {
+        const rx = ip2.x + perp.nx * slope.reach;
+        const rz = ip2.z + perp.nz * slope.reach;
+        soffitQuads.push({
+          verts: [
+            ip2.x, slope.kneeH, ip2.z,
+            ip2.x, ceilingH, ip2.z,
+            rx, ceilingH, rz,
+          ],
+          wallIdx: nextWall,
+        });
+      }
     }
 
     if (vertices.length > 0) {
@@ -861,6 +896,18 @@ export class Engine3d {
       const slopeMesh = new THREE.Mesh(geometry, this.ceilingMat);
       slopeMesh.castShadow = true;
       this.roomGroup.add(slopeMesh);
+    }
+
+    for (const soffit of soffitQuads) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(soffit.verts, 3));
+      const vertCount = soffit.verts.length / 3;
+      geometry.setIndex(vertCount === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]);
+      geometry.computeVertexNormals();
+      const mat = this.getWallIntMat(soffit.wallIdx);
+      const soffitMesh = new THREE.Mesh(geometry, mat);
+      soffitMesh.castShadow = true;
+      this.roomGroup.add(soffitMesh);
     }
 
     // Step 3: Fill corners where slopes meet or extend along non-sloped walls
