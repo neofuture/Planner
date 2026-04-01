@@ -531,6 +531,8 @@ export class Engine3d {
     this.doorPivots = [];
     this.doorMeshes = [];
     this.ceilingLights = [];
+    for (const mat of this.wallIntMats.values()) mat.dispose();
+    this.wallIntMats.clear();
     this.currentRoomShape = roomShape;
 
     this.addFloor(roomShape);
@@ -657,8 +659,19 @@ export class Engine3d {
     this.roomGroup.add(mesh);
   }
 
-  private getWallIntMat(_wallIdx: number): THREE.Material {
-    return this.wallIntMat;
+  private wallIntMats = new Map<number, THREE.MeshStandardMaterial>();
+
+  private getWallIntMat(wallIdx: number): THREE.MeshStandardMaterial {
+    const cached = this.wallIntMats.get(wallIdx);
+    if (cached) return cached;
+
+    const hex = this.currentRoomShape?.wallColors?.[wallIdx];
+    if (!hex) return this.wallIntMat;
+
+    const mat = this.wallIntMat.clone();
+    mat.color.set(hex);
+    this.wallIntMats.set(wallIdx, mat);
+    return mat;
   }
 
   private addCeiling(roomShape: RoomShape) {
@@ -1198,7 +1211,6 @@ export class Engine3d {
     }
     const ccw = sa2 > 0;
     const extIdx = 0, intIdx = 1;
-    const wallMats = [this.wallExtMat, this.wallIntMat];
 
     for (let i = 0; i < n; i++) {
       const p1 = pts[i];
@@ -1285,7 +1297,7 @@ export class Engine3d {
         geo.groups[2].materialIndex = ccw ? intIdx : extIdx;
       }
 
-      const mesh = new THREE.Mesh(geo, wallMats);
+      const mesh = new THREE.Mesh(geo, [this.wallExtMat, this.getWallIntMat(i)]);
       mesh.castShadow = true;
       mesh.receiveShadow = false;
       mesh.position.set(p1.x * MM_TO_M, 0, p1.y * MM_TO_M);
@@ -2886,6 +2898,8 @@ export class Engine3d {
     this.renderer?.dispose();
     this.wallExtMat.dispose();
     this.wallIntMat.dispose();
+    for (const mat of this.wallIntMats.values()) mat.dispose();
+    this.wallIntMats.clear();
     this.floorMat.dispose();
     this.floorTexture?.dispose();
     this.ceilingMat.dispose();

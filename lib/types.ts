@@ -113,6 +113,8 @@ export interface FloorPlan {
   insets: Inset[];
   /** Ceiling lights */
   lights?: CeilingLight[];
+  /** Per-wall interior paint colours, keyed by wall index (hex string e.g. "#f1e1cc") */
+  wallColors?: Record<number, string>;
 }
 
 /** @deprecated Use FloorPlan instead */

@@ -2929,6 +2929,23 @@ export class Engine2d {
     }
   }
 
+  setWallColor(wallIdx: number, color: string | undefined) {
+    if (!this.roomShape.wallColors) {
+      this.roomShape.wallColors = {};
+    }
+    if (color === undefined) {
+      delete this.roomShape.wallColors[wallIdx];
+    } else {
+      this.roomShape.wallColors[wallIdx] = color;
+    }
+    this.onRoomDataChanged?.();
+    this.planView();
+  }
+
+  getWallColor(wallIdx: number): string | undefined {
+    return this.roomShape.wallColors?.[wallIdx];
+  }
+
   repositionLightsAwayFromSlopes() {
     const lights = this.roomShape.lights;
     if (!lights || lights.length === 0) return;

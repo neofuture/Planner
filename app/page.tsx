@@ -805,7 +805,33 @@ export default function PlannerPage() {
           )}
 
           {selectedItem.type === "wall" && (
-            <h3 className={styles.sectionTitle}>Wall</h3>
+            <div>
+              <h3 className={styles.sectionTitle}>
+                Wall {String.fromCharCode(65 + selectedItem.id)}
+              </h3>
+              <label className={styles.fieldLabel}>Interior Colour</label>
+              <input
+                type="color"
+                className={styles.input}
+                value={engine?.getWallColor(selectedItem.id) ?? "#f1e1cc"}
+                onChange={(e) => {
+                  engine?.setWallColor(selectedItem.id, e.target.value);
+                  engine3dRef.current?.refresh();
+                }}
+              />
+              {engine?.getWallColor(selectedItem.id) && (
+                <button
+                  className={styles.btn}
+                  style={{ width: "100%", marginTop: "6px" }}
+                  onClick={() => {
+                    engine?.setWallColor(selectedItem.id, undefined);
+                    engine3dRef.current?.refresh();
+                  }}
+                >
+                  Reset to Default
+                </button>
+              )}
+            </div>
           )}
 
           {selectedItem.type === "grabHandle" && freeEdit && (
