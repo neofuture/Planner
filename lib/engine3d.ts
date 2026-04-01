@@ -1122,34 +1122,36 @@ export class Engine3d {
       const stopW = 0.012; // 12mm wide
       const stopD = 0.010; // 10mm deep
 
-      // Create U-shaped frame as single extruded shape to avoid corner seams
+      // Create U-shaped frame as three pieces (left, top, right) - no bottom
       const ext = 0.008;
-      const frameShape = new THREE.Shape();
-      // Outer rectangle (with extensions)
-      frameShape.moveTo(-ext, 0);
-      frameShape.lineTo(w + ext, 0);
-      frameShape.lineTo(w + ext, h + ext);
-      frameShape.lineTo(-ext, h + ext);
-      frameShape.closePath();
-      // Inner rectangle (hole) - creates U shape
-      const hole = new THREE.Path();
-      hole.moveTo(df, 0);
-      hole.lineTo(df, h - df);
-      hole.lineTo(w - df, h - df);
-      hole.lineTo(w - df, 0);
-      hole.closePath();
-      frameShape.holes.push(hole);
+      const frameMeshes: THREE.Mesh[] = [];
       
-      const frameGeo = new THREE.ExtrudeGeometry(frameShape, {
-        depth: wallT,
-        bevelEnabled: false,
-      });
-      const frameMesh = new THREE.Mesh(frameGeo, this.frameMat);
-      frameMesh.position.set(l, b, 0);
-      frameMesh.castShadow = true;
-      frameMesh.receiveShadow = true;
-      parent.add(frameMesh);
-      const frameMeshes = [frameMesh];
+      // Left frame piece
+      const leftFrameGeo = new THREE.BoxGeometry(df + ext, h + ext, wallT);
+      const leftFrameMesh = new THREE.Mesh(leftFrameGeo, this.frameMat);
+      leftFrameMesh.position.set(l + (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
+      leftFrameMesh.castShadow = true;
+      leftFrameMesh.receiveShadow = true;
+      parent.add(leftFrameMesh);
+      frameMeshes.push(leftFrameMesh);
+      
+      // Top frame piece
+      const topFrameGeo = new THREE.BoxGeometry(w + ext * 2, df + ext, wallT);
+      const topFrameMesh = new THREE.Mesh(topFrameGeo, this.frameMat);
+      topFrameMesh.position.set(l + w / 2, b + h + ext / 2 - df / 2, wallT / 2);
+      topFrameMesh.castShadow = true;
+      topFrameMesh.receiveShadow = true;
+      parent.add(topFrameMesh);
+      frameMeshes.push(topFrameMesh);
+      
+      // Right frame piece
+      const rightFrameGeo = new THREE.BoxGeometry(df + ext, h + ext, wallT);
+      const rightFrameMesh = new THREE.Mesh(rightFrameGeo, this.frameMat);
+      rightFrameMesh.position.set(l + w - (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
+      rightFrameMesh.castShadow = true;
+      rightFrameMesh.receiveShadow = true;
+      parent.add(rightFrameMesh);
+      frameMeshes.push(rightFrameMesh);
 
       const innerW = w - df * 2;
       const innerH = h - df;
@@ -1161,9 +1163,11 @@ export class Engine3d {
         const ow = op.width * MM_TO_M;
         const disp = op.displacement * MM_TO_M;
         // Non-hinge edge position (in inner coordinates)
+        // Left-hung: hinge at disp, non-hinge at disp + width
+        // Right-hung: hinge at disp + width, non-hinge at disp
         const nonHingeEdge = op.hanging === "left"
           ? (disp + ow) * scale
-          : (disp - ow) * scale;
+          : disp * scale;
         const rounded = Math.round(nonHingeEdge * 1000); // round to mm for comparison
         meetingEdges.set(rounded, (meetingEdges.get(rounded) ?? 0) + 1);
       }
@@ -1175,7 +1179,9 @@ export class Engine3d {
         const outward = op.open === "outwards";
 
         // Check if this door's non-hinge edge meets another door
-        const nonHingeEdge = leftHung ? (disp + ow) * scale : (disp - ow) * scale;
+        // Left-hung: hinge at disp, non-hinge at disp + width
+        // Right-hung: hinge at disp + width, non-hinge at disp
+        const nonHingeEdge = leftHung ? (disp + ow) * scale : disp * scale;
         const rounded = Math.round(nonHingeEdge * 1000);
         const hasMeetingStile = (meetingEdges.get(rounded) ?? 0) >= 2;
         
@@ -1191,37 +1197,37 @@ export class Engine3d {
         const stopInnerL = l + df;
         const stopInnerW = w - df * 2;
 
-        // Add door stop moulding as single U-shaped extrusion to avoid corner seams
-        const stopShape = new THREE.Shape();
-        // Outer U shape
-        stopShape.moveTo(0, 0);
-        stopShape.lineTo(0, innerH);
-        stopShape.lineTo(stopW, innerH);
-        stopShape.lineTo(stopW, innerH - stopW);
-        stopShape.lineTo(stopInnerW - stopW, innerH - stopW);
-        stopShape.lineTo(stopInnerW - stopW, innerH);
-        stopShape.lineTo(stopInnerW, innerH);
-        stopShape.lineTo(stopInnerW, 0);
-        stopShape.lineTo(stopInnerW - stopW, 0);
-        stopShape.lineTo(stopInnerW - stopW, innerH - stopW);
-        stopShape.lineTo(stopW, innerH - stopW);
-        stopShape.lineTo(stopW, 0);
-        stopShape.closePath();
-        
-        const stopGeo = new THREE.ExtrudeGeometry(stopShape, {
-          depth: stopD,
-          bevelEnabled: false,
-        });
-        const stopMesh = new THREE.Mesh(stopGeo, this.frameMat);
-        stopMesh.position.set(stopInnerL, b, stopZ - stopD / 2);
-        stopMesh.castShadow = true;
-        stopMesh.receiveShadow = true;
-        parent.add(stopMesh);
+        // Add door stop moulding as three pieces (left, top, right) - no bottom
+        // Left stop
+        const leftStopGeo = new THREE.BoxGeometry(stopW, innerH, stopD);
+        const leftStopMesh = new THREE.Mesh(leftStopGeo, this.frameMat);
+        leftStopMesh.position.set(stopInnerL + stopW / 2, b + innerH / 2, stopZ);
+        leftStopMesh.castShadow = true;
+        leftStopMesh.receiveShadow = true;
+        parent.add(leftStopMesh);
+
+        // Top stop
+        const topStopGeo = new THREE.BoxGeometry(stopInnerW, stopW, stopD);
+        const topStopMesh = new THREE.Mesh(topStopGeo, this.frameMat);
+        topStopMesh.position.set(stopInnerL + stopInnerW / 2, b + innerH - stopW / 2, stopZ);
+        topStopMesh.castShadow = true;
+        topStopMesh.receiveShadow = true;
+        parent.add(topStopMesh);
+
+        // Right stop
+        const rightStopGeo = new THREE.BoxGeometry(stopW, innerH, stopD);
+        const rightStopMesh = new THREE.Mesh(rightStopGeo, this.frameMat);
+        rightStopMesh.position.set(stopInnerL + stopInnerW - stopW / 2, b + innerH / 2, stopZ);
+        rightStopMesh.castShadow = true;
+        rightStopMesh.receiveShadow = true;
+        parent.add(rightStopMesh);
 
         const pivot = new THREE.Group();
+        // For left-hung: hinge is at left edge of door (at displacement)
+        // For right-hung: hinge is at right edge of door (at displacement + door width)
         const pivotX = leftHung
           ? l + df + (disp / w) * innerW
-          : l + w - df - ((w - disp) / w) * innerW;
+          : l + df + ((disp + ow) / w) * innerW;
         // Door hinge is on the face the door CLOSES against
         // Outward: door closes at interior (0), swings toward exterior
         // Inward: door closes at exterior (wallT), swings toward interior
@@ -1260,7 +1266,7 @@ export class Engine3d {
         const clickPlaneH = panelH;
         const clickPlaneX = leftHung
           ? l + df + (disp / w) * innerW + clickPlaneW / 2
-          : l + w - df - ((w - disp) / w) * innerW - clickPlaneW / 2;
+          : l + df + ((disp + ow) / w) * innerW - clickPlaneW / 2;
         const clickPlaneY = b + clickPlaneH / 2;
         const clickPlaneZ = wallT / 2;
         
@@ -1804,7 +1810,11 @@ export class Engine3d {
 
       if (hanging === "left" || hanging === "right") {
         let swing = rad;
-        if (ref.leftHung !== ref.outward) swing = -swing;
+        // Left-hung: positive rotation swings door away from hinge (correct for outward at Z=0)
+        // Right-hung: negative rotation swings door away from hinge
+        // Inward doors need opposite rotation since pivot is at exterior face
+        if (!ref.leftHung) swing = -swing;
+        if (!ref.outward) swing = -swing;
         ref.pivot.rotation.y = swing;
       } else if (hanging === "top") {
         ref.pivot.rotation.x = ref.outward ? rad : -rad;
