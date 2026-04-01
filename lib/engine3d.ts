@@ -106,9 +106,10 @@ export class Engine3d {
   private mouldingMat = new THREE.MeshStandardMaterial({
     name: "moulding",
     color: 0xffffff,
-    roughness: 0.3,
+    roughness: 0.35,
     metalness: 0,
     side: THREE.DoubleSide,
+    shadowSide: THREE.FrontSide,
   });
 
   private glassMat = new THREE.MeshPhysicalMaterial({
@@ -122,39 +123,28 @@ export class Engine3d {
     side: THREE.DoubleSide,
   });
 
-  private frameMat = new THREE.MeshPhysicalMaterial({
+  private frameMat = new THREE.MeshStandardMaterial({
     name: "frame",
     color: 0xf0f0ee,
     roughness: 0.35,
     metalness: 0,
-    clearcoat: 0.2,
-    clearcoatRoughness: 0.3,
-    sheen: 0.15,
-    sheenRoughness: 0.3,
-    sheenColor: new THREE.Color(0xffffff),
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
 
-  private doorMat = new THREE.MeshPhysicalMaterial({
+  private doorMat = new THREE.MeshStandardMaterial({
     name: "door",
     color: 0xf0f0ee,
-    roughness: 0.4,
+    roughness: 0.45,
     metalness: 0,
-    clearcoat: 0.15,
-    clearcoatRoughness: 0.35,
-    side: THREE.DoubleSide,
   });
 
-  private doorPanelMat = new THREE.MeshPhysicalMaterial({
+  private doorPanelMat = new THREE.MeshStandardMaterial({
     name: "doorPanel",
-    color: 0xe5e5e2,
-    roughness: 0.5,
+    color: 0xf0f0ee,
+    roughness: 0.55,
     metalness: 0,
-    clearcoat: 0.08,
-    clearcoatRoughness: 0.45,
-    side: THREE.DoubleSide,
   });
 
   private handleMat = new THREE.MeshStandardMaterial({
@@ -409,7 +399,7 @@ export class Engine3d {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
 
-    const skyGeo = new THREE.SphereGeometry(50, 32, 16);
+    const skyGeo = new THREE.SphereGeometry(50, 128, 64);
     const skyMat = new THREE.MeshBasicMaterial({
       color: 0xd8d4d0,
       side: THREE.BackSide,
@@ -426,9 +416,14 @@ export class Engine3d {
     envScene.add(gMesh);
 
     this.envMap = pmrem.fromScene(envScene, 0, 0.1, 100).texture;
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = 0.3;
     pmrem.dispose();
+
+    // Only assign env map to materials that need reflections (glass, metal).
+    // Do NOT set scene.environment — the sphere tessellation causes visible
+    // banding/ridges on painted surfaces even at low intensity.
+    this.glassMat.envMap = this.envMap;
+    this.handleMat.envMap = this.envMap;
+    this.spotlightRimMat.envMap = this.envMap;
   }
 
   private addGroundPlane() {
@@ -462,8 +457,8 @@ export class Engine3d {
     this.sunLight.shadow.camera.right = 20;
     this.sunLight.shadow.camera.top = 20;
     this.sunLight.shadow.camera.bottom = -20;
-    this.sunLight.shadow.bias = -0.0002;
-    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.bias = -0.0001;
+    this.sunLight.shadow.normalBias = 0.004;
     this.sunLight.shadow.radius = 2;
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
@@ -482,7 +477,6 @@ export class Engine3d {
       if (this.sunLight) this.sunLight.intensity = 0;
       if (this.fillLight) this.fillLight.intensity = 0;
       this.scene.background = new THREE.Color(0x050508);
-      this.scene.environmentIntensity = 0.15;
       
       for (const light of this.ceilingLights) {
         const base = light.userData.baseIntensity ?? 15;
@@ -494,7 +488,6 @@ export class Engine3d {
       if (this.sunLight) this.sunLight.intensity = 1.8;
       if (this.fillLight) this.fillLight.intensity = 0.3;
       this.scene.background = new THREE.Color(0x87ceeb);
-      this.scene.environmentIntensity = 0.3;
       
       for (const light of this.ceilingLights) {
         const base = light.userData.baseIntensity ?? 15;
@@ -520,6 +513,7 @@ export class Engine3d {
 
     this.addFloor(roomShape);
     this.addWalls(roomShape);
+    this.addSkirting(roomShape);
     this.addCeiling(roomShape);
     this.addLights(roomShape);
     this.buildCollision(roomShape);
@@ -1251,30 +1245,10 @@ export class Engine3d {
     const archW = 0.058;  // 58mm wide
     const archD = 0.015;  // 15mm projection from wall
 
-    // Regency profile cross-section: [widthOffset, depthOffset]
+    // Regency profile cross-section built from smooth curves
     // wo: 0 = inner edge (at door frame), archW = outer edge (on wall)
     // dpo: 0 = wall surface, archD = peak projection into room
-    const profile: [number, number][] = [
-      [0,             0],
-      [0,             archD * 0.15],
-      [archW * 0.04,  archD * 0.15],
-      [archW * 0.04,  archD * 0.40],
-      [archW * 0.08,  archD * 0.58],
-      [archW * 0.13,  archD * 0.78],
-      [archW * 0.20,  archD * 0.93],
-      [archW * 0.28,  archD],
-      [archW * 0.38,  archD * 0.92],
-      [archW * 0.46,  archD * 0.78],
-      [archW * 0.52,  archD * 0.68],
-      [archW * 0.58,  archD * 0.74],
-      [archW * 0.66,  archD * 0.65],
-      [archW * 0.73,  archD * 0.52],
-      [archW * 0.80,  archD * 0.38],
-      [archW * 0.87,  archD * 0.24],
-      [archW * 0.93,  archD * 0.14],
-      [archW,         archD * 0.14],
-      [archW,         0],
-    ];
+    const profile = this.buildArchProfile(archW, archD);
 
     // How far the architrave overlaps the frame (leaves ~8mm of casing visible)
     const inset = 0.048;
@@ -1285,10 +1259,11 @@ export class Engine3d {
       (wo, dpo) => [l + inset - wo, b + h - inset + wo,   wallT + dpo]
     );
 
-    // Right vertical piece
+    // Right vertical piece (flip winding — x increases with wo here, opposite to left/top)
     this.buildMouldingStrip(parent, profile,
       (wo, dpo) => [l + w - inset + wo, b,                    wallT + dpo],
-      (wo, dpo) => [l + w - inset + wo, b + h - inset + wo,   wallT + dpo]
+      (wo, dpo) => [l + w - inset + wo, b + h - inset + wo,   wallT + dpo],
+      true
     );
 
     // Top horizontal piece
@@ -1298,42 +1273,212 @@ export class Engine3d {
     );
   }
 
+  private buildArchProfile(w: number, d: number): [number, number][] {
+    const pts: [number, number][] = [];
+
+    const bezier2 = (
+      x0: number, y0: number,
+      cx: number, cy: number,
+      x1: number, y1: number,
+      n: number, skipFirst = false
+    ) => {
+      const start = skipFirst ? 1 : 0;
+      for (let i = start; i <= n; i++) {
+        const t = i / n;
+        const u = 1 - t;
+        pts.push([
+          u * u * x0 + 2 * u * t * cx + t * t * x1,
+          u * u * y0 + 2 * u * t * cy + t * t * y1,
+        ]);
+      }
+    };
+
+    // 1. Inner quirk / rebate step
+    pts.push([0, 0]);
+    pts.push([0, d * 0.12]);
+    pts.push([w * 0.03, d * 0.12]);
+    pts.push([w * 0.03, d * 0.28]);
+
+    // 2. Large ogee: concave sweep into convex peak
+    bezier2(w * 0.03, d * 0.28, w * 0.08, d * 0.58, w * 0.14, d * 0.84, 6, true);
+    bezier2(w * 0.14, d * 0.84, w * 0.20, d * 1.04, w * 0.28, d, 6, true);
+
+    // 3. Concave sweep down from peak to fillet
+    bezier2(w * 0.28, d, w * 0.36, d * 0.82, w * 0.42, d * 0.60, 6, true);
+
+    // 4. Flat fillet
+    pts.push([w * 0.46, d * 0.56]);
+
+    // 5. Small convex bead
+    bezier2(w * 0.46, d * 0.56, w * 0.50, d * 0.65, w * 0.54, d * 0.56, 4, true);
+
+    // 6. Transition down to back-band
+    pts.push([w * 0.58, d * 0.48]);
+    pts.push([w * 0.62, d * 0.42]);
+
+    // 7. Back-band: flat, substantial outer section
+    pts.push([w * 0.62, d * 0.72]);
+    pts.push([w * 0.96, d * 0.72]);
+
+    // 8. Outer edge lip
+    pts.push([w * 0.96, d * 0.60]);
+    pts.push([w, d * 0.60]);
+    pts.push([w, 0]);
+
+    return pts;
+  }
+
+  private buildSkirtingProfile(h: number, d: number): [number, number][] {
+    const pts: [number, number][] = [];
+
+    const bezier2 = (
+      x0: number, y0: number,
+      cx: number, cy: number,
+      x1: number, y1: number,
+      n: number, skipFirst = false
+    ) => {
+      const start = skipFirst ? 1 : 0;
+      for (let i = start; i <= n; i++) {
+        const t = i / n;
+        const u = 1 - t;
+        pts.push([
+          u * u * x0 + 2 * u * t * cx + t * t * x1,
+          u * u * y0 + 2 * u * t * cy + t * t * y1,
+        ]);
+      }
+    };
+
+    // Bottom edge
+    pts.push([0, 0]);
+    pts.push([0, d]);
+
+    // Flat face up to 55% height
+    pts.push([h * 0.55, d]);
+
+    // Small fillet step inward
+    pts.push([h * 0.58, d * 0.92]);
+
+    // Concave sweep toward wall
+    bezier2(h * 0.58, d * 0.92, h * 0.64, d * 0.50, h * 0.70, d * 0.38, 6, true);
+
+    // Convex ogee outward to peak
+    bezier2(h * 0.70, d * 0.38, h * 0.76, d * 0.22, h * 0.82, d * 0.62, 6, true);
+    bezier2(h * 0.82, d * 0.62, h * 0.86, d * 0.78, h * 0.90, d * 0.65, 4, true);
+
+    // Top taper back to wall
+    bezier2(h * 0.90, d * 0.65, h * 0.94, d * 0.40, h * 0.97, d * 0.20, 4, true);
+    pts.push([h, d * 0.12]);
+    pts.push([h, 0]);
+
+    return pts;
+  }
+
+  private addSkirting(roomShape: RoomShape) {
+    const pts = getPerimeter(roomShape);
+    const wallT = roomShape.wallThickness * MM_TO_M;
+    const n = pts.length;
+    const skirtH = 0.070;
+    const skirtD = 0.018;
+
+    let sa2 = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      sa2 += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    const ccw = sa2 > 0;
+    const skirtZ = ccw ? wallT : 0;
+    const zSign = ccw ? 1 : -1;
+
+    const profile = this.buildSkirtingProfile(skirtH, skirtD);
+
+    for (let i = 0; i < n; i++) {
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % n];
+      const dx = (p2.x - p1.x) * MM_TO_M;
+      const dz = (p2.y - p1.y) * MM_TO_M;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len < 0.001) continue;
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+      const doors = roomShape.insets.filter(
+        (ins) => ins.wall === i && ins.type === "door"
+      );
+      const doorSpans: { s: number; e: number }[] = [];
+      for (const door of doors) {
+        const doorLeft = door.positionLeft * MM_TO_M;
+        const doorRight = (door.positionLeft + door.width) * MM_TO_M;
+        doorSpans.push({ s: doorLeft, e: doorRight });
+      }
+      doorSpans.sort((a, b) => a.s - b.s);
+
+      const gaps: { s: number; e: number }[] = [];
+      let cursor = 0;
+      for (const span of doorSpans) {
+        if (span.s > cursor + 0.001) gaps.push({ s: cursor, e: span.s });
+        cursor = Math.max(cursor, span.e);
+      }
+      if (len - cursor > 0.001) gaps.push({ s: cursor, e: len });
+
+      for (const gap of gaps) {
+        const parent = new THREE.Group();
+        parent.position.set(p1.x * MM_TO_M, 0, p1.y * MM_TO_M);
+        parent.rotation.y = -angle;
+
+        this.buildMouldingStrip(parent, profile,
+          (wo, dpo) => [gap.s, wo, skirtZ + dpo * zSign],
+          (wo, dpo) => [gap.e, wo, skirtZ + dpo * zSign]
+        );
+
+        this.roomGroup.add(parent);
+      }
+    }
+  }
+
   private buildMouldingStrip(
     parent: THREE.Group,
     profile: [number, number][],
     mapStart: (wo: number, dpo: number) => [number, number, number],
-    mapEnd: (wo: number, dpo: number) => [number, number, number]
+    mapEnd: (wo: number, dpo: number) => [number, number, number],
+    flip = false
   ) {
     const np = profile.length;
     const vertices: number[] = [];
     const indices: number[] = [];
 
-    // Two vertices per profile point: one at each end of the strip
     for (let i = 0; i < np; i++) {
       const [wo, dpo] = profile[i];
       const s = mapStart(wo, dpo);
       const e = mapEnd(wo, dpo);
-      vertices.push(s[0], s[1], s[2]);  // even index = start end
-      vertices.push(e[0], e[1], e[2]);  // odd index  = finish end
+      vertices.push(s[0], s[1], s[2]);
+      vertices.push(e[0], e[1], e[2]);
     }
 
-    // Side faces: quads connecting adjacent profile points between start and end
-    for (let i = 0; i < np; i++) {
-      const ni = (i + 1) % np;
+    for (let i = 0; i < np - 1; i++) {
       const a = i * 2, b = i * 2 + 1;
-      const c = ni * 2, d = ni * 2 + 1;
-      indices.push(a, c, d);
-      indices.push(a, d, b);
+      const c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+      if (flip) {
+        indices.push(a, d, c);
+        indices.push(a, b, d);
+      } else {
+        indices.push(a, c, d);
+        indices.push(a, d, b);
+      }
     }
 
-    // Start cap (bottom of verticals, left end of top piece)
     for (let i = 1; i < np - 1; i++) {
-      indices.push(0, (i + 1) * 2, i * 2);
+      if (flip) {
+        indices.push(0, i * 2, (i + 1) * 2);
+      } else {
+        indices.push(0, (i + 1) * 2, i * 2);
+      }
     }
 
-    // End cap (mitred top of verticals, right end of top piece)
     for (let i = 1; i < np - 1; i++) {
-      indices.push(1, i * 2 + 1, (i + 1) * 2 + 1);
+      if (flip) {
+        indices.push(1, (i + 1) * 2 + 1, i * 2 + 1);
+      } else {
+        indices.push(1, i * 2 + 1, (i + 1) * 2 + 1);
+      }
     }
 
     const geo = new THREE.BufferGeometry();
@@ -2091,7 +2236,7 @@ export class Engine3d {
       const panelMesh = new THREE.Mesh(panelGeo, this.doorPanelMat);
       panelMesh.position.set(cx, cy, -(thick / 2 - recess - panelD / 2));
       panelMesh.castShadow = true;
-      panelMesh.receiveShadow = true;
+      panelMesh.receiveShadow = false;
       group.add(panelMesh);
       
       // Outer moulding frame (sits between frame and panel)
@@ -2100,7 +2245,7 @@ export class Engine3d {
       const topMesh = new THREE.Mesh(topGeo, this.doorMat);
       topMesh.position.set(cx, cy + ph / 2 - mouldW / 2, -(thick / 2 - recess / 2 - bevelD / 2));
       topMesh.castShadow = true;
-      topMesh.receiveShadow = true;
+      topMesh.receiveShadow = false;
       group.add(topMesh);
       
       // Bottom moulding
@@ -2108,7 +2253,7 @@ export class Engine3d {
       const btmMesh = new THREE.Mesh(btmGeo, this.doorMat);
       btmMesh.position.set(cx, cy - ph / 2 + mouldW / 2, -(thick / 2 - recess / 2 - bevelD / 2));
       btmMesh.castShadow = true;
-      btmMesh.receiveShadow = true;
+      btmMesh.receiveShadow = false;
       group.add(btmMesh);
       
       // Left moulding
@@ -2116,7 +2261,7 @@ export class Engine3d {
       const leftMesh = new THREE.Mesh(leftGeo, this.doorMat);
       leftMesh.position.set(cx - pw / 2 + mouldW / 2, cy, -(thick / 2 - recess / 2 - bevelD / 2));
       leftMesh.castShadow = true;
-      leftMesh.receiveShadow = true;
+      leftMesh.receiveShadow = false;
       group.add(leftMesh);
       
       // Right moulding
@@ -2124,7 +2269,7 @@ export class Engine3d {
       const rightMesh = new THREE.Mesh(rightGeo, this.doorMat);
       rightMesh.position.set(cx + pw / 2 - mouldW / 2, cy, -(thick / 2 - recess / 2 - bevelD / 2));
       rightMesh.castShadow = true;
-      rightMesh.receiveShadow = true;
+      rightMesh.receiveShadow = false;
       group.add(rightMesh);
     };
 
