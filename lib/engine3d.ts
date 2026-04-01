@@ -1,6 +1,8 @@
 import * as THREE from "three";
-import type { RoomShape, Point, Opening } from "./types";
-import { DOOR_PRESETS } from "./types";
+import type { FloorPlan, Point, Opening } from "./types";
+import { DOOR_PRESETS, getPerimeter, getCeilingHeight } from "./types";
+
+type RoomShape = FloorPlan;
 
 const MM_TO_M = 0.001;
 const EYE_HEIGHT = 1.732;
@@ -274,15 +276,15 @@ export class Engine3d {
   }
 
   private pointCamera(roomShape: RoomShape) {
-    const c = this.centroid(roomShape.path);
+    const c = this.centroid(getPerimeter(roomShape));
     const cx = c.x * MM_TO_M;
     const cz = c.y * MM_TO_M;
 
     const eyeY = this.kneeling ? KNEEL_HEIGHT : EYE_HEIGHT;
     this.camera.position.set(cx, eyeY, cz);
 
-    const p0 = roomShape.path[0];
-    const p1 = roomShape.path[1];
+    const p0 = getPerimeter(roomShape)[0];
+    const p1 = getPerimeter(roomShape)[1];
     const dx = p1.x - p0.x;
     const dy = p1.y - p0.y;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -374,7 +376,7 @@ export class Engine3d {
 
   private buildCollision(roomShape: RoomShape) {
     this.collisionSegs = [];
-    const pts = roomShape.path;
+    const pts = getPerimeter(roomShape);
 
     let signedArea2 = 0;
     for (let i = 0; i < pts.length; i++) {
@@ -451,7 +453,7 @@ export class Engine3d {
 
   private addFloor(roomShape: RoomShape) {
     const shape = new THREE.Shape();
-    const pts = roomShape.path;
+    const pts = getPerimeter(roomShape);
     shape.moveTo(pts[0].x * MM_TO_M, pts[0].y * MM_TO_M);
     for (let i = 1; i < pts.length; i++) {
       shape.lineTo(pts[i].x * MM_TO_M, pts[i].y * MM_TO_M);
@@ -467,8 +469,8 @@ export class Engine3d {
   }
 
   private addWalls(roomShape: RoomShape) {
-    const pts = roomShape.path;
-    const wallH = roomShape.roomHeight * MM_TO_M;
+    const pts = getPerimeter(roomShape);
+    const wallH = getCeilingHeight(roomShape) * MM_TO_M;
     const wallT = roomShape.wallThickness * MM_TO_M;
     const n = pts.length;
 

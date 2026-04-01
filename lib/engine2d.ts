@@ -1,18 +1,27 @@
 import type {
   Point,
-  RoomShape,
+  FloorPlan,
   Wall,
   ActiveItem,
   ItemDefinition,
   Inset,
   InteractionMode,
 } from "./types";
+import { getPerimeter, getCeilingHeight } from "./types";
+
+type RoomShape = FloorPlan;
 
 export type SelectedItemCallback = (item: ActiveItem) => void;
 export type WallsListCallback = (walls: Wall[]) => void;
 export type ZoomLevelCallback = (zoom: number) => void;
 export type AnimationCallback = () => void;
 export type RoomDataChangedCallback = () => void;
+export type ContextMenuCallback = (
+  x: number,
+  y: number,
+  type: "wall" | "anchor",
+  index: number
+) => void;
 
 export class Engine2d {
   private originalViewPortX = 0;
@@ -43,6 +52,7 @@ export class Engine2d {
   private onZoomLevelChange: ZoomLevelCallback | null = null;
   private onAnimationComplete: AnimationCallback | null = null;
   private onRoomDataChanged: RoomDataChangedCallback | null = null;
+  private onContextMenu: ContextMenuCallback | null = null;
 
   private distance = 0;
   private textDistance = 0;
@@ -159,13 +169,15 @@ export class Engine2d {
     onWallsList: WallsListCallback,
     onZoomLevelChange: ZoomLevelCallback,
     onAnimationComplete?: AnimationCallback,
-    onRoomDataChanged?: RoomDataChangedCallback
+    onRoomDataChanged?: RoomDataChangedCallback,
+    onContextMenu?: ContextMenuCallback
   ) {
     this.onSelectedItem = onSelectedItem;
     this.onWallsList = onWallsList;
     this.onZoomLevelChange = onZoomLevelChange;
     this.onAnimationComplete = onAnimationComplete ?? null;
     this.onRoomDataChanged = onRoomDataChanged ?? null;
+    this.onContextMenu = onContextMenu ?? null;
   }
 
   private _on(el: EventTarget, type: string, fn: EventListener) {
@@ -184,6 +196,7 @@ export class Engine2d {
     this.onZoomLevelChange = null;
     this.onAnimationComplete = null;
     this.onRoomDataChanged = null;
+    this.onContextMenu = null;
   }
 
   startEngine(
@@ -265,6 +278,14 @@ export class Engine2d {
         this.isMoving = false;
         this.planView();
       }
+    });
+
+    this._on(this.canvasControlsElement, "contextmenu", (event) => {
+      event.preventDefault();
+      if (!this.freeEdit) return;
+      const me = event as MouseEvent;
+      const [x, y] = this.returnPosition(me, false);
+      this.handleContextMenu(x, y, me.clientX, me.clientY);
     });
 
     this.resize();
@@ -365,8 +386,8 @@ export class Engine2d {
           newX = Math.round(newX / 100) * 100;
           newY = Math.round(newY / 100) * 100;
         }
-        this.roomShape.path[this.dragItem.wall].x = newX;
-        this.roomShape.path[this.dragItem.wall].y = newY;
+        getPerimeter(this.roomShape)[this.dragItem.wall].x = newX;
+        getPerimeter(this.roomShape)[this.dragItem.wall].y = newY;
       }
 
       if (this.dragItem.type === "inset") {
@@ -471,7 +492,7 @@ export class Engine2d {
     let minY = 0;
     let maxX = 0;
     let maxY = 0;
-    const ground = this.roomShape.path;
+    const ground = getPerimeter(this.roomShape);
     for (const item of ground) {
       maxX = Math.max(maxX, item.x);
       maxY = Math.max(maxY, item.y);
@@ -548,7 +569,7 @@ export class Engine2d {
     this.getMaxMin();
     this.drawGrid();
 
-    this.ground = this.roomShape.path;
+    this.ground = getPerimeter(this.roomShape);
     this.insets = this.roomShape.insets;
     this.drawGround();
     this.drawArea();
@@ -860,7 +881,7 @@ export class Engine2d {
 
   private drawArea() {
     const ground = this.ground;
-    const D = this.getPolygonCentroid(this.roomShape.path);
+    const D = this.getPolygonCentroid(getPerimeter(this.roomShape));
     if (this.showArea) {
       const area = (this.areaFromCoords(ground) / 1000)
         .toFixed(2)
@@ -2010,14 +2031,14 @@ export class Engine2d {
         const adjDepth = useOffset
           ? Math.round(
               this.calculate2MeterOffset(
-                this.roomShape.roomHeight,
+                getCeilingHeight(this.roomShape),
                 adjSlope.kneeWallHeight,
                 adjSlope.roofAngle
               )
             ) * this.scale
           : Math.round(
               this.calculateSlopeDepth(
-                this.roomShape.roomHeight,
+                getCeilingHeight(this.roomShape),
                 adjSlope.kneeWallHeight,
                 adjSlope.roofAngle
               )
@@ -2074,7 +2095,7 @@ export class Engine2d {
       const y2 = (walls[w].y2 + this.viewPortY) * this.scale;
       const depth = Math.round(
         this.calculateSlopeDepth(
-          this.roomShape.roomHeight,
+          getCeilingHeight(this.roomShape),
           slope.kneeWallHeight,
           slope.roofAngle
         )
@@ -2088,7 +2109,7 @@ export class Engine2d {
       if (slope.kneeWallHeight < 2000) {
         depth2 = Math.round(
           this.calculate2MeterOffset(
-            this.roomShape.roomHeight,
+            getCeilingHeight(this.roomShape),
             slope.kneeWallHeight,
             slope.roofAngle
           )
@@ -2790,6 +2811,161 @@ export class Engine2d {
         this.onAnimationComplete?.();
       }
     }
+  }
+
+  private pendingContextAction: {
+    type: "wall" | "anchor";
+    index: number;
+    screenX: number;
+    screenY: number;
+  } | null = null;
+
+  private handleContextMenu(x: number, y: number, clientX: number, clientY: number) {
+    const arr = [...this.itemDefinitions].reverse();
+    for (const item of arr) {
+      if (this.pointIsInPoly({ x, y }, item.poly)) {
+        if (item.type === "grabHandle") {
+          this.pendingContextAction = {
+            type: "anchor",
+            index: item.id,
+            screenX: x,
+            screenY: y,
+          };
+          this.onContextMenu?.(clientX, clientY, "anchor", item.id);
+          return;
+        }
+        if (item.type === "wall") {
+          this.pendingContextAction = {
+            type: "wall",
+            index: item.wall,
+            screenX: x,
+            screenY: y,
+          };
+          this.onContextMenu?.(clientX, clientY, "wall", item.wall);
+          return;
+        }
+      }
+    }
+  }
+
+  executeContextAction(action: "add" | "delete") {
+    if (!this.pendingContextAction) return;
+    
+    if (action === "add" && this.pendingContextAction.type === "wall") {
+      this.splitWallAtPoint(
+        this.pendingContextAction.index,
+        this.pendingContextAction.screenX,
+        this.pendingContextAction.screenY
+      );
+    } else if (action === "delete" && this.pendingContextAction.type === "anchor") {
+      this.deleteAnchor(this.pendingContextAction.index);
+    }
+    
+    this.pendingContextAction = null;
+  }
+
+  clearContextAction() {
+    this.pendingContextAction = null;
+  }
+
+  resetDragState() {
+    this.isDragging = false;
+    this.isMoving = false;
+    this.dragItem = false;
+  }
+
+  private splitWallAtPoint(wallIndex: number, screenX: number, screenY: number) {
+    const wall = this.walls[wallIndex];
+    const x1 = (wall.x1 + this.viewPortX) * this.scale;
+    const y1 = (wall.y1 + this.viewPortY) * this.scale;
+    const x2 = (wall.x2 + this.viewPortX) * this.scale;
+    const y2 = (wall.y2 + this.viewPortY) * this.scale;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+    if (lengthSq === 0) return;
+
+    let t = ((screenX - x1) * dx + (screenY - y1) * dy) / lengthSq;
+    t = Math.max(0.1, Math.min(0.9, t));
+
+    let newX = wall.x1 + t * (wall.x2 - wall.x1);
+    let newY = wall.y1 + t * (wall.y2 - wall.y1);
+
+    if (this.snapToGrid) {
+      newX = Math.round(newX / 100) * 100;
+      newY = Math.round(newY / 100) * 100;
+    }
+
+    getPerimeter(this.roomShape).splice(wallIndex + 1, 0, { x: newX, y: newY });
+
+    for (const inset of this.roomShape.insets) {
+      if (inset.wall > wallIndex) {
+        inset.wall++;
+      } else if (inset.wall === wallIndex) {
+        const splitPoint = t * wall.length;
+        if (inset.positionLeft >= splitPoint) {
+          inset.wall++;
+          inset.positionLeft -= splitPoint;
+        }
+      }
+    }
+
+    for (const slope of this.roomShape.slopes) {
+      if (slope.wall > wallIndex) {
+        slope.wall++;
+      }
+    }
+
+    this.planView();
+    this.onRoomDataChanged?.();
+  }
+
+  deleteAnchor(anchorIndex: number): boolean {
+    const perimeter = getPerimeter(this.roomShape);
+    if (perimeter.length <= 3) {
+      return false;
+    }
+
+    perimeter.splice(anchorIndex, 1);
+
+    for (const inset of this.roomShape.insets) {
+      if (inset.wall >= anchorIndex) {
+        inset.wall--;
+        if (inset.wall < 0) {
+          inset.wall = perimeter.length - 1;
+        }
+      }
+    }
+
+    for (const slope of this.roomShape.slopes) {
+      if (slope.wall >= anchorIndex) {
+        slope.wall--;
+        if (slope.wall < 0) {
+          slope.wall = perimeter.length - 1;
+        }
+      }
+    }
+
+    this.activeItem = {
+      type: "",
+      id: -1,
+      poly: [],
+      wall: -1,
+      identity: -1,
+    };
+    this.onSelectedItem?.(this.activeItem);
+
+    this.planView();
+    this.onRoomDataChanged?.();
+    return true;
+  }
+
+  canDeleteAnchor(anchorIndex: number): boolean {
+    if (getPerimeter(this.roomShape).length <= 3) {
+      return false;
+    }
+    return true;
   }
 
   onPinchStart(event: { center: { x: number; y: number }; scale: number }) {

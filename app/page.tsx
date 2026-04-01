@@ -9,13 +9,15 @@ const Engine3D = lazy(() => import("@/components/Engine3D"));
 import type {
   ActiveItem,
   Wall,
-  RoomShape,
+  FloorPlan,
   GridSizeOption,
   InteractionMode,
   Inset,
   DoorStyle,
 } from "@/lib/types";
-import { DOOR_PRESETS } from "@/lib/types";
+import { DOOR_PRESETS, getCeilingHeight } from "@/lib/types";
+
+type RoomShape = FloorPlan;
 import styles from "./page.module.css";
 
 const gridSizes: GridSizeOption[] = [
@@ -70,6 +72,13 @@ export default function PlannerPage() {
   const [floorGap, setFloorGap] = useState(0);
   const [floorOffset, setFloorOffset] = useState(0);
 
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: "wall" | "anchor";
+    index: number;
+  } | null>(null);
+
   const engine = engineRef.current?.engine;
 
   const itemDetails: string[] = [];
@@ -86,6 +95,9 @@ export default function PlannerPage() {
   }
   if (selectedItem.type === "slope") {
     itemDetails.push(String(selectedItem.identity));
+  }
+  if (selectedItem.type === "grabHandle") {
+    itemDetails.push("Anchor " + (selectedItem.id + 1));
   }
 
   const wallsList = walls.map((_, i) => ({
@@ -172,6 +184,29 @@ export default function PlannerPage() {
     [engine]
   );
 
+  const handleContextMenu = useCallback(
+    (x: number, y: number, type: "wall" | "anchor", index: number) => {
+      setContextMenu({ x, y, type, index });
+    },
+    []
+  );
+
+  const handleContextMenuAction = useCallback(
+    (action: "add" | "delete") => {
+      engine?.resetDragState();
+      engine?.executeContextAction(action);
+      engine3dRef.current?.refresh();
+      setContextMenu(null);
+    },
+    [engine]
+  );
+
+  const closeContextMenu = useCallback(() => {
+    engine?.resetDragState();
+    engine?.clearContextAction();
+    setContextMenu(null);
+  }, [engine]);
+
   return (
     <div className={styles.root}>
       <div className={styles.uiContainer}>
@@ -181,19 +216,19 @@ export default function PlannerPage() {
             className={styles.btn}
             onClick={() => handleRoomShape(1)}
           >
-            Room 1
+            Building 1
           </button>
           <button
             className={styles.btn}
             onClick={() => handleRoomShape(2)}
           >
-            Room 2
+            Building 2
           </button>
           <button
             className={styles.btn}
             onClick={() => handleRoomShape(3)}
           >
-            Room 3
+            Building 3
           </button>
           <hr className={styles.divider} />
           <input
@@ -455,6 +490,7 @@ export default function PlannerPage() {
             onWallsListChange={setWalls}
             onAnimationComplete={handleAnimationComplete}
             onRoomDataChanged={handleRoomDataChanged}
+            onContextMenu={handleContextMenu}
           />
           {show3D && (
             <Suspense fallback={null}>
@@ -495,7 +531,7 @@ export default function PlannerPage() {
             className={`${styles.btn} ${freeEdit ? styles.btnActive : styles.btnInfo}`}
             onClick={handleFreeEdit}
           >
-            Edit Room Shape
+            Edit Building Shape
           </button>
           {freeEdit && (
             <Checkbox
@@ -753,6 +789,34 @@ export default function PlannerPage() {
             <h3 className={styles.sectionTitle}>Wall</h3>
           )}
 
+          {selectedItem.type === "grabHandle" && freeEdit && (
+            <div>
+              <h3 className={styles.sectionTitle}>
+                Anchor {selectedItem.id + 1}
+              </h3>
+              <p style={{ fontSize: "12px", color: "#888", marginBottom: "10px" }}>
+                Right-click on a wall to add a new anchor point.
+              </p>
+              <button
+                className={styles.btn}
+                style={{ backgroundColor: "#c44", width: "100%" }}
+                disabled={!engine?.canDeleteAnchor(selectedItem.id)}
+                onClick={() => {
+                  if (engine?.deleteAnchor(selectedItem.id)) {
+                    engine3dRef.current?.refresh();
+                  }
+                }}
+              >
+                Delete Anchor
+              </button>
+              {!engine?.canDeleteAnchor(selectedItem.id) && (
+                <p style={{ fontSize: "11px", color: "#c44", marginTop: "5px" }}>
+                  Room needs at least 3 anchors.
+                </p>
+              )}
+            </div>
+          )}
+
           {selectedItem.type === "ground" && (
             <div>
               <h3 className={styles.sectionTitle}>Ground</h3>
@@ -841,7 +905,7 @@ export default function PlannerPage() {
                   label="Knee Wall Height (mm)"
                   value={slopeData.kneeWallHeight}
                   min={0}
-                  max={roomShape.roomHeight - 100}
+                  max={getCeilingHeight(roomShape) - 100}
                   step={10}
                   onChange={(v) => {
                     slopeData.kneeWallHeight = v;
@@ -862,13 +926,13 @@ export default function PlannerPage() {
                   }}
                 />
                 <SpinnerField
-                  label="Room Height (mm)"
-                  value={roomShape.roomHeight}
+                  label="Ceiling Height (mm)"
+                  value={getCeilingHeight(roomShape)}
                   min={1000}
                   max={5000}
                   step={10}
                   onChange={(v) => {
-                    roomShape.roomHeight = v;
+                    roomShape.ceilingHeight = v;
                     engine?.planView();
                     setSelectedItem({ ...selectedItem });
                   }}
@@ -878,6 +942,52 @@ export default function PlannerPage() {
           })()}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && freeEdit && (
+        <>
+          <div
+            className={styles.contextMenuOverlay}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              closeContextMenu();
+            }}
+          />
+          <div
+            className={styles.contextMenu}
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {contextMenu.type === "wall" && (
+              <button
+                className={styles.contextMenuItem}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleContextMenuAction("add");
+                }}
+              >
+                Add Anchor Point
+              </button>
+            )}
+            {contextMenu.type === "anchor" && (
+              <button
+                className={styles.contextMenuItem}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleContextMenuAction("delete");
+                }}
+                disabled={!engine?.canDeleteAnchor(contextMenu.index)}
+              >
+                Delete Anchor
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

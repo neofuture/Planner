@@ -18,6 +18,7 @@ interface Engine2DProps {
   onWallsListChange?: (walls: Wall[]) => void;
   onAnimationComplete?: () => void;
   onRoomDataChanged?: () => void;
+  onContextMenu?: (x: number, y: number, type: "wall" | "anchor", index: number) => void;
 }
 
 export interface Engine2DHandle {
@@ -25,7 +26,7 @@ export interface Engine2DHandle {
 }
 
 const Engine2D = forwardRef<Engine2DHandle, Engine2DProps>(function Engine2D(
-  { roomShape, onZoomLevelChange, onSelectedItemChange, onWallsListChange, onAnimationComplete, onRoomDataChanged },
+  { roomShape, onZoomLevelChange, onSelectedItemChange, onWallsListChange, onAnimationComplete, onRoomDataChanged, onContextMenu },
   ref
 ) {
   const canvasGridRef = useRef<HTMLCanvasElement>(null);
@@ -65,7 +66,8 @@ const Engine2D = forwardRef<Engine2DHandle, Engine2DProps>(function Engine2D(
       (walls) => onWallsListChange?.(walls),
       (zoom) => onZoomLevelChange?.(zoom),
       () => onAnimationComplete?.(),
-      () => onRoomDataChanged?.()
+      () => onRoomDataChanged?.(),
+      (x, y, type, index) => onContextMenu?.(x, y, type, index)
     );
 
     const timer = setTimeout(() => {

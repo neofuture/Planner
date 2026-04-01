@@ -34,8 +34,17 @@ export const DOOR_PRESETS: Record<DoorStyle, DoorPreset> = {
   double:     { label: "Double Doors",     width: 1524, height: 1981, thickness: 35, openings: 2 },
 };
 
+export type WallReference = {
+  type: "perimeter";
+  index: number;
+} | {
+  type: "internal";
+  id: string;
+};
+
 export interface Inset {
   wall: number;
+  wallRef?: WallReference;
   locked: boolean;
   type: "window" | "door";
   doorStyle?: DoorStyle;
@@ -49,16 +58,52 @@ export interface Inset {
 
 export interface Slope {
   wall: number;
+  wallRef?: WallReference;
   kneeWallHeight: number;
   roofAngle: number;
 }
 
-export interface RoomShape {
-  path: Point[];
+export interface InternalWall {
+  id: string;
+  start: Point;
+  end: Point;
+  thickness?: number;
+  connectedTo?: {
+    start?: WallReference;
+    end?: WallReference;
+  };
+}
+
+export interface FloorPlan {
+  /** External walls defining the building perimeter */
+  perimeter: Point[];
+  /** @deprecated Use perimeter instead */
+  path?: Point[];
+  /** Internal wall segments */
+  internalWalls: InternalWall[];
+  /** Sloped ceiling sections */
   slopes: Slope[];
+  /** Default wall thickness in mm */
   wallThickness: number;
-  roomHeight: number;
+  /** Ceiling height in mm */
+  ceilingHeight: number;
+  /** @deprecated Use ceilingHeight instead */
+  roomHeight?: number;
+  /** Doors and windows */
   insets: Inset[];
+}
+
+/** @deprecated Use FloorPlan instead */
+export type RoomShape = FloorPlan;
+
+/** Helper to get perimeter from FloorPlan (handles old 'path' property) */
+export function getPerimeter(plan: FloorPlan): Point[] {
+  return plan.perimeter ?? plan.path ?? [];
+}
+
+/** Helper to get ceiling height from FloorPlan (handles old 'roomHeight' property) */
+export function getCeilingHeight(plan: FloorPlan): number {
+  return plan.ceilingHeight ?? plan.roomHeight ?? 2400;
 }
 
 export interface Wall {
