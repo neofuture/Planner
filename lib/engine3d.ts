@@ -1,4 +1,8 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import type { FloorPlan, Point, Opening, CeilingLight } from "./types";
 import { DOOR_PRESETS, getPerimeter, getCeilingHeight } from "./types";
 
@@ -101,12 +105,13 @@ export class Engine3d {
     roughness: 0.5,
     metalness: 0,
     side: THREE.DoubleSide,
+    shadowSide: THREE.BackSide,
   });
 
   private mouldingMat = new THREE.MeshStandardMaterial({
     name: "moulding",
     color: 0xffffff,
-    roughness: 0.35,
+    roughness: 0.45,
     metalness: 0,
     side: THREE.DoubleSide,
     shadowSide: THREE.FrontSide,
@@ -125,8 +130,8 @@ export class Engine3d {
 
   private frameMat = new THREE.MeshStandardMaterial({
     name: "frame",
-    color: 0xf0f0ee,
-    roughness: 0.35,
+    color: 0xffffff,
+    roughness: 0.45,
     metalness: 0,
     polygonOffset: true,
     polygonOffsetFactor: -1,
@@ -135,15 +140,15 @@ export class Engine3d {
 
   private doorMat = new THREE.MeshStandardMaterial({
     name: "door",
-    color: 0xf0f0ee,
+    color: 0xffffff,
     roughness: 0.45,
     metalness: 0,
   });
 
   private doorPanelMat = new THREE.MeshStandardMaterial({
     name: "doorPanel",
-    color: 0xf0f0ee,
-    roughness: 0.55,
+    color: 0xffffff,
+    roughness: 0.45,
     metalness: 0,
   });
 
@@ -187,6 +192,8 @@ export class Engine3d {
 
   private envMap: THREE.Texture | null = null;
   private groundMesh: THREE.Mesh | null = null;
+  private composer: EffectComposer | null = null;
+  private gtaoPass: GTAOPass | null = null;
 
   constructor() {
     this.scene = new THREE.Scene();
@@ -210,6 +217,7 @@ export class Engine3d {
     this.setupLighting();
     this.addGroundPlane();
     this.loadFloorTexture();
+    this.setupPostProcessing();
 
     this._canvas = canvas;
     
@@ -467,7 +475,21 @@ export class Engine3d {
     this.fillLight.position.set(6, 8, 12);
     this.scene.add(this.fillLight);
   }
-  
+
+  private setupPostProcessing() {
+    const el = this.renderer.domElement.parentElement;
+    const w = el?.clientWidth ?? 1;
+    const h = el?.clientHeight ?? 1;
+
+    this.composer = new EffectComposer(this.renderer);
+
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    const outputPass = new OutputPass();
+    this.composer.addPass(outputPass);
+  }
+
   setNightMode(enabled: boolean) {
     this._nightMode = enabled;
     
@@ -722,7 +744,7 @@ export class Engine3d {
     ceilingGeo.rotateX(Math.PI / 2);
     const ceilingMesh = new THREE.Mesh(ceilingGeo, this.ceilingMat);
     ceilingMesh.position.y = ceilingH;
-    ceilingMesh.receiveShadow = true;
+    ceilingMesh.castShadow = true;
     this.roomGroup.add(ceilingMesh);
 
     // Step 2: Add slopes on top
@@ -837,7 +859,7 @@ export class Engine3d {
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
       const slopeMesh = new THREE.Mesh(geometry, this.ceilingMat);
-      slopeMesh.receiveShadow = true;
+      slopeMesh.castShadow = true;
       this.roomGroup.add(slopeMesh);
     }
 
@@ -869,7 +891,7 @@ export class Engine3d {
         triGeo.setIndex([0, 1, 2]);
         triGeo.computeVertexNormals();
         const triMesh = new THREE.Mesh(triGeo, this.ceilingMat);
-        triMesh.receiveShadow = true;
+        triMesh.castShadow = true;
         this.roomGroup.add(triMesh);
       }
       // No separate extensions needed - the main slope is already extended to meet adjacent walls
@@ -1488,7 +1510,7 @@ export class Engine3d {
 
     const mesh = new THREE.Mesh(geo, this.mouldingMat);
     mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.receiveShadow = false;
     parent.add(mesh);
   }
 
@@ -1998,7 +2020,7 @@ export class Engine3d {
       const leftFrameMesh = new THREE.Mesh(leftFrameGeo, this.frameMat);
       leftFrameMesh.position.set(l + (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
       leftFrameMesh.castShadow = false;
-      leftFrameMesh.receiveShadow = true;
+      leftFrameMesh.receiveShadow = false;
       parent.add(leftFrameMesh);
       frameMeshes.push(leftFrameMesh);
       
@@ -2007,7 +2029,7 @@ export class Engine3d {
       const topFrameMesh = new THREE.Mesh(topFrameGeo, this.frameMat);
       topFrameMesh.position.set(l + w / 2, b + h + ext / 2 - df / 2, wallT / 2);
       topFrameMesh.castShadow = false;
-      topFrameMesh.receiveShadow = true;
+      topFrameMesh.receiveShadow = false;
       parent.add(topFrameMesh);
       frameMeshes.push(topFrameMesh);
       
@@ -2016,7 +2038,7 @@ export class Engine3d {
       const rightFrameMesh = new THREE.Mesh(rightFrameGeo, this.frameMat);
       rightFrameMesh.position.set(l + w - (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
       rightFrameMesh.castShadow = false;
-      rightFrameMesh.receiveShadow = true;
+      rightFrameMesh.receiveShadow = false;
       parent.add(rightFrameMesh);
       frameMeshes.push(rightFrameMesh);
 
@@ -2072,24 +2094,24 @@ export class Engine3d {
         const leftStopGeo = new THREE.BoxGeometry(stopW, innerH, stopD);
         const leftStopMesh = new THREE.Mesh(leftStopGeo, this.frameMat);
         leftStopMesh.position.set(stopInnerL + stopW / 2, b + innerH / 2, stopZ);
-        leftStopMesh.castShadow = true;
-        leftStopMesh.receiveShadow = true;
+        leftStopMesh.castShadow = false;
+        leftStopMesh.receiveShadow = false;
         parent.add(leftStopMesh);
 
         // Top stop
         const topStopGeo = new THREE.BoxGeometry(stopInnerW, stopW, stopD);
         const topStopMesh = new THREE.Mesh(topStopGeo, this.frameMat);
         topStopMesh.position.set(stopInnerL + stopInnerW / 2, b + innerH - stopW / 2, stopZ);
-        topStopMesh.castShadow = true;
-        topStopMesh.receiveShadow = true;
+        topStopMesh.castShadow = false;
+        topStopMesh.receiveShadow = false;
         parent.add(topStopMesh);
 
         // Right stop
         const rightStopGeo = new THREE.BoxGeometry(stopW, innerH, stopD);
         const rightStopMesh = new THREE.Mesh(rightStopGeo, this.frameMat);
         rightStopMesh.position.set(stopInnerL + stopInnerW - stopW / 2, b + innerH / 2, stopZ);
-        rightStopMesh.castShadow = true;
-        rightStopMesh.receiveShadow = true;
+        rightStopMesh.castShadow = false;
+        rightStopMesh.receiveShadow = false;
         parent.add(rightStopMesh);
 
         const pivot = new THREE.Group();
@@ -2192,7 +2214,7 @@ export class Engine3d {
       );
       mesh.position.set(cx, cy, 0);
       mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      mesh.receiveShadow = false;
       group.add(mesh);
     };
 
@@ -2597,6 +2619,7 @@ export class Engine3d {
     const h = el.clientHeight;
     if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h);
+    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this._needsRender = true;
@@ -2780,7 +2803,11 @@ export class Engine3d {
     }
 
     if (hasFocus || doorsAnimating || heightAnimating || this._needsRender) {
-      this.renderer?.render(this.scene, this.camera);
+      if (this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer?.render(this.scene, this.camera);
+      }
       this._needsRender = false;
     }
   };
@@ -2808,6 +2835,7 @@ export class Engine3d {
     this._hasFocus = false;
     this._isDragging = false;
     this.disposeGroup(this.roomGroup);
+    this.composer?.dispose();
     this.renderer?.dispose();
     this.wallExtMat.dispose();
     this.wallIntMat.dispose();

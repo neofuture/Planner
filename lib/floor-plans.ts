@@ -23,7 +23,7 @@ export const floorPlan1: FloorPlan = {
       x: 2200,
       y: 2800,
       cableLength: 150,
-      colorTemp: 2700,
+      colorTemp: 5700,
       intensity: 1,
     },
   ],
