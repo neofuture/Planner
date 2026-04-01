@@ -8,7 +8,7 @@ const MM_TO_M = 0.001;
 const EYE_HEIGHT = 1.732;
 const KNEEL_HEIGHT = 1.232;
 const WALK_SPEED = 2.5;
-const PLAYER_RADIUS = 0.25;
+const PLAYER_RADIUS = 0.35;
 
 interface CollisionSeg {
   ax: number; az: number;
@@ -42,6 +42,8 @@ export class Engine3d {
   private doorPivots: DoorPivotRef[] = [];
   private doorMeshes: THREE.Object3D[] = [];
   private collisionSegs: CollisionSeg[] = [];
+  private currentRoomShape: RoomShape | null = null;
+  private needsCollisionRebuild = false;
   private _disposed = false;
   private keys: Record<string, boolean> = {};
   private _onKeyDown: ((e: KeyboardEvent) => void) | null = null;
@@ -143,7 +145,7 @@ export class Engine3d {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.setupEnvironment();
@@ -336,8 +338,8 @@ export class Engine3d {
   }
 
   private setupLighting() {
-    this.scene.add(new THREE.AmbientLight(0xfff8f0, 0.3));
-    this.scene.add(new THREE.HemisphereLight(0x88bbee, 0x445522, 0.5));
+    this.scene.add(new THREE.AmbientLight(0xfff8f0, 0.4));
+    this.scene.add(new THREE.HemisphereLight(0x88bbee, 0x445522, 0.6));
 
     const sun = new THREE.DirectionalLight(0xfff5e0, 2.0);
     sun.position.set(-8, 15, -10);
@@ -351,6 +353,7 @@ export class Engine3d {
     sun.shadow.camera.bottom = -20;
     sun.shadow.bias = -0.0002;
     sun.shadow.normalBias = 0.02;
+    sun.shadow.radius = 2;
     this.scene.add(sun);
     this.scene.add(sun.target);
 
@@ -365,6 +368,7 @@ export class Engine3d {
     this.roomGroup = new THREE.Group();
     this.doorPivots = [];
     this.doorMeshes = [];
+    this.currentRoomShape = roomShape;
 
     this.addFloor(roomShape);
     this.addWalls(roomShape);
@@ -377,6 +381,7 @@ export class Engine3d {
   private buildCollision(roomShape: RoomShape) {
     this.collisionSegs = [];
     const pts = getPerimeter(roomShape);
+    const wallT = roomShape.wallThickness * MM_TO_M;
 
     let signedArea2 = 0;
     for (let i = 0; i < pts.length; i++) {
@@ -401,13 +406,31 @@ export class Engine3d {
       const nx = windSign * (-uz);
       const nz = windSign * ux;
 
+      // Offset collision line to interior wall face
+      const offX = nx * wallT;
+      const offZ = nz * wallT;
+
+      // Only create gaps for individual door openings that are open enough to walk through
+      const MIN_OPEN_DEGREES = 45;
+      const gaps: { s: number; e: number }[] = [];
       const doors = roomShape.insets.filter(
         (ins) => ins.wall === i && ins.type === "door"
       );
-      const gaps: { s: number; e: number }[] = doors.map((d) => ({
-        s: d.positionLeft * MM_TO_M,
-        e: (d.positionLeft + d.width) * MM_TO_M,
-      }));
+      for (const door of doors) {
+        const doorLeft = door.positionLeft * MM_TO_M;
+        for (const op of door.openings) {
+          if (op.degreesOpen >= MIN_OPEN_DEGREES) {
+            // Calculate the span this opening covers within the door
+            const opDisp = op.displacement * MM_TO_M;
+            const opWidth = op.width * MM_TO_M;
+            // Opening spans from displacement to displacement + width
+            gaps.push({
+              s: doorLeft + opDisp,
+              e: doorLeft + opDisp + opWidth,
+            });
+          }
+        }
+      }
       gaps.sort((a, b) => a.s - b.s);
 
       const segs: { s: number; e: number }[] = [];
@@ -422,8 +445,8 @@ export class Engine3d {
         const sa = si === 0 ? segs[si].s - PLAYER_RADIUS : segs[si].s;
         const sb = si === segs.length - 1 ? segs[si].e + PLAYER_RADIUS : segs[si].e;
         this.collisionSegs.push({
-          ax: wx1 + ux * sa, az: wz1 + uz * sa,
-          bx: wx1 + ux * sb, bz: wz1 + uz * sb,
+          ax: wx1 + ux * sa + offX, az: wz1 + uz * sa + offZ,
+          bx: wx1 + ux * sb + offX, bz: wz1 + uz * sb + offZ,
           nx, nz,
         });
       }
@@ -1747,17 +1770,11 @@ export class Engine3d {
             pos.z += seg.nz * PLAYER_RADIUS;
             pushed = true;
           } else {
-            const side = toX * seg.nx + toZ * seg.nz;
-            if (side < 0 && t > 0.001 && t < 0.999) {
-              pos.x = cx + seg.nx * PLAYER_RADIUS;
-              pos.z = cz + seg.nz * PLAYER_RADIUS;
-              pushed = true;
-            } else {
-              const push = (PLAYER_RADIUS - dist) / dist;
-              pos.x += toX * push;
-              pos.z += toZ * push;
-              pushed = true;
-            }
+            // Push player away from segment - works from both sides
+            const push = (PLAYER_RADIUS - dist) / dist;
+            pos.x += toX * push;
+            pos.z += toZ * push;
+            pushed = true;
           }
         }
       }
@@ -1794,15 +1811,24 @@ export class Engine3d {
   private _needsRender = true;
 
   private updateDoors(delta: number): boolean {
+    const MIN_OPEN_DEGREES = 45;
     let animating = false;
     for (const ref of this.doorPivots) {
       const op = ref.opening;
+      const prevDeg = op.degreesOpen;
       const diff = ref.targetDeg - op.degreesOpen;
       if (Math.abs(diff) < 0.1) {
         op.degreesOpen = ref.targetDeg;
       } else {
         op.degreesOpen += diff * (1 - Math.exp(-10 * delta));
         animating = true;
+      }
+
+      // Check if door crossed the walkable threshold - rebuild collision if so
+      const wasOpen = prevDeg >= MIN_OPEN_DEGREES;
+      const isOpen = op.degreesOpen >= MIN_OPEN_DEGREES;
+      if (wasOpen !== isOpen) {
+        this.needsCollisionRebuild = true;
       }
 
       const rad = op.degreesOpen * (Math.PI / 180);
@@ -1850,6 +1876,12 @@ export class Engine3d {
     if (hasFocus) this.updateMovement(delta);
     const doorsAnimating = this.updateDoors(delta);
     const heightAnimating = this.updateEyeHeight(delta);
+
+    // Rebuild collision when doors cross the walkable threshold
+    if (this.needsCollisionRebuild && this.currentRoomShape) {
+      this.buildCollision(this.currentRoomShape);
+      this.needsCollisionRebuild = false;
+    }
 
     if (hasFocus || doorsAnimating || heightAnimating || this._needsRender) {
       this.renderer?.render(this.scene, this.camera);
