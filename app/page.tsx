@@ -468,8 +468,8 @@ export default function PlannerPage() {
           <div className={styles.zoomSlider}>
             <input
               type="range"
-              min={0.05}
-              max={2}
+              min={0.066}
+              max={0.66}
               step={0.0001}
               value={zoomLevel}
               onChange={(e) => {
@@ -481,6 +481,7 @@ export default function PlannerPage() {
                 }
               }}
             />
+            <span className={styles.zoomPercent}>{Math.round(((zoomLevel - 0.066) / (0.66 - 0.066)) * 100)}%</span>
           </div>
           <Engine2D
             ref={engineRef}

@@ -303,11 +303,11 @@ export class Engine2d {
     [centerX, centerY] = this.returnPosition(event, false);
     const wheel = event.deltaY;
 
-    if (this.scale > 2) this.scale = 2;
-    if (this.scale < 0.05) this.scale = 0.05;
+    if (this.scale > 0.66) this.scale = 0.66;
+    if (this.scale < 0.066) this.scale = 0.066;
     if (
-      (this.scale > 0.05 || wheel > 0) &&
-      (this.scale < 2 || wheel < 0)
+      (this.scale > 0.066 || wheel > 0) &&
+      (this.scale < 0.66 || wheel < 0)
     ) {
       const zoom = Math.exp(wheel * 0.002);
       this.scale *= zoom;
@@ -2978,17 +2978,17 @@ export class Engine2d {
 
   onPinch(event: { scale: number }) {
     const zoom = Math.exp(event.scale - this.lastScale);
-    if (this.scale > 2) {
-      this.scale = 2;
+    if (this.scale > 0.66) {
+      this.scale = 0.66;
       return;
     }
-    if (this.scale < 0.05) {
-      this.scale = 0.05;
+    if (this.scale < 0.066) {
+      this.scale = 0.066;
       return;
     }
     if (
-      (this.scale > 0.05 || event.scale - this.lastScale > 0) &&
-      (this.scale < 2 || event.scale - this.lastScale < 0)
+      (this.scale > 0.066 || event.scale - this.lastScale > 0) &&
+      (this.scale < 0.66 || event.scale - this.lastScale < 0)
     ) {
       this.scale *= zoom;
       this.viewPortX +=

@@ -58,6 +58,15 @@
   accent-color: #4466ff;
 }
 
+.zoomPercent {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: #333;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
 .settings {
   background-color: #222222;
   color: white;
