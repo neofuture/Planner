@@ -307,6 +307,8 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
         <label
           className={styles.invertLabel}
           onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => canvasRef.current?.focus()}
         >
           <input
             type="checkbox"
@@ -319,6 +321,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
           className={styles.invertLabel}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.preventDefault()}
+          onClick={() => canvasRef.current?.focus()}
         >
           <input
             type="checkbox"
@@ -332,7 +335,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
         </button>
       </div>
       <div className={styles.canvasWrap}>
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} tabIndex={0} />
         <div className={styles.hint}>
           Click+drag look &mdash; Click doors &mdash; WASD move &mdash; Shift kneel
         </div>
