@@ -61,6 +61,7 @@ export class Engine3d {
   private _moveVec = new THREE.Vector3();
   invertY = false;
   kneeling = false;
+  onKneelChange: ((kneeling: boolean) => void) | null = null;
 
   private wallExtMat = new THREE.MeshStandardMaterial({
     name: "wallExt",
@@ -176,9 +177,21 @@ export class Engine3d {
       if (e.code === "KeyE") {
         this.interactDoor();
       }
+      // Shift key for kneeling
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        this.kneeling = true;
+        this.onKneelChange?.(true);
+        this.requestRender();
+      }
     };
     this._onKeyUp = (e: KeyboardEvent) => {
       this.keys[e.code] = false;
+      // Release shift to stand up
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        this.kneeling = false;
+        this.onKneelChange?.(false);
+        this.requestRender();
+      }
     };
     document.addEventListener("keydown", this._onKeyDown);
     document.addEventListener("keyup", this._onKeyUp);

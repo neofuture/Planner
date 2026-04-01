@@ -82,6 +82,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
     if (!canvasRef.current) return;
     const engine = new Engine3d();
     engine.invertY = loadState()?.invertY ?? false;
+    engine.onKneelChange = (k) => setKneeling(k);
     engineRef.current = engine;
 
     const timer = setTimeout(() => {
@@ -90,6 +91,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
 
     return () => {
       clearTimeout(timer);
+      engine.onKneelChange = null;
       engine.dispose();
       engineRef.current = null;
     };
@@ -316,13 +318,14 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
         <label
           className={styles.invertLabel}
           onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.preventDefault()}
         >
           <input
             type="checkbox"
             checked={kneeling}
             onChange={(e) => setKneeling(e.target.checked)}
           />
-          Kneel
+          Kneel (Shift)
         </label>
         <button className={styles.closeBtn} onClick={onClose}>
           &times;
@@ -331,7 +334,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
       <div className={styles.canvasWrap}>
         <canvas ref={canvasRef} />
         <div className={styles.hint}>
-          Click+drag look &mdash; Click open doors &mdash; WASD move &mdash; Arrows look
+          Click+drag look &mdash; Click doors &mdash; WASD move &mdash; Shift kneel
         </div>
       </div>
     </div>
