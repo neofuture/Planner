@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { FloorPlan, Point, Opening } from "./types";
+import type { FloorPlan, Point, Opening, CeilingLight } from "./types";
 import { DOOR_PRESETS, getPerimeter, getCeilingHeight } from "./types";
 
 type RoomShape = FloorPlan;
@@ -62,6 +62,13 @@ export class Engine3d {
   invertY = false;
   kneeling = false;
   onKneelChange: ((kneeling: boolean) => void) | null = null;
+  
+  private _nightMode = false;
+  private ambientLight: THREE.AmbientLight | null = null;
+  private hemisphereLight: THREE.HemisphereLight | null = null;
+  private sunLight: THREE.DirectionalLight | null = null;
+  private fillLight: THREE.DirectionalLight | null = null;
+  private ceilingLights: THREE.Light[] = [];
 
   private wallExtMat = new THREE.MeshStandardMaterial({
     name: "wallExt",
@@ -73,15 +80,34 @@ export class Engine3d {
   private wallIntMat = new THREE.MeshStandardMaterial({
     name: "wallInt",
     color: 0xf1e1cc,
-    roughness: 0.6,
+    roughness: 0.9,
     metalness: 0,
   });
 
   private floorMat = new THREE.MeshStandardMaterial({
     name: "floor",
-    color: 0xc49a6c,
-    roughness: 0.75,
+    color: 0xffffff,
+    roughness: 0.6,
     metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+  
+  private floorTexture: THREE.Texture | null = null;
+  private floorTexturePath = "/textures/flooring/floor-wood-1.jpg";
+
+  private ceilingMat = new THREE.MeshStandardMaterial({
+    name: "ceiling",
+    color: 0xffffff,
+    roughness: 0.5,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+
+  private mouldingMat = new THREE.MeshStandardMaterial({
+    name: "moulding",
+    color: 0xffffff,
+    roughness: 0.3,
+    metalness: 0,
     side: THREE.DoubleSide,
   });
 
@@ -98,11 +124,11 @@ export class Engine3d {
 
   private frameMat = new THREE.MeshPhysicalMaterial({
     name: "frame",
-    color: 0xf2f2f0,
-    roughness: 0.18,
+    color: 0xf0f0ee,
+    roughness: 0.35,
     metalness: 0,
-    clearcoat: 0.5,
-    clearcoatRoughness: 0.12,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.3,
     sheen: 0.15,
     sheenRoughness: 0.3,
     sheenColor: new THREE.Color(0xffffff),
@@ -113,11 +139,21 @@ export class Engine3d {
 
   private doorMat = new THREE.MeshPhysicalMaterial({
     name: "door",
-    color: 0xf2f2f0,
-    roughness: 0.22,
+    color: 0xf0f0ee,
+    roughness: 0.4,
     metalness: 0,
-    clearcoat: 0.3,
-    clearcoatRoughness: 0.15,
+    clearcoat: 0.15,
+    clearcoatRoughness: 0.35,
+    side: THREE.DoubleSide,
+  });
+
+  private doorPanelMat = new THREE.MeshPhysicalMaterial({
+    name: "doorPanel",
+    color: 0xe5e5e2,
+    roughness: 0.5,
+    metalness: 0,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.45,
     side: THREE.DoubleSide,
   });
 
@@ -126,6 +162,37 @@ export class Engine3d {
     color: 0xc0c0c0,
     roughness: 0.15,
     metalness: 0.95,
+  });
+
+  // Light fixture materials
+  private lightFixtureMat = new THREE.MeshStandardMaterial({
+    name: "lightFixture",
+    color: 0x1a1a1a,
+    roughness: 0.3,
+    metalness: 0.8,
+  });
+
+  private lightBulbMat = new THREE.MeshStandardMaterial({
+    name: "lightBulb",
+    color: 0xfff4e0,
+    emissive: 0xffc66d,
+    emissiveIntensity: 2.0,
+    roughness: 0.2,
+    metalness: 0,
+  });
+
+  private spotlightRimMat = new THREE.MeshStandardMaterial({
+    name: "spotlightRim",
+    color: 0xffffff,
+    roughness: 0.05,
+    metalness: 1.0,
+  });
+
+  private cableMat = new THREE.MeshStandardMaterial({
+    name: "cable",
+    color: 0x1a1a1a,
+    roughness: 0.6,
+    metalness: 0,
   });
 
   private envMap: THREE.Texture | null = null;
@@ -152,6 +219,7 @@ export class Engine3d {
     this.setupEnvironment();
     this.setupLighting();
     this.addGroundPlane();
+    this.loadFloorTexture();
 
     this._canvas = canvas;
     
@@ -311,18 +379,44 @@ export class Engine3d {
   }
 
 
+  private loadFloorTexture() {
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      this.floorTexturePath,
+      (texture) => {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(5, 5);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        this.floorTexture = texture;
+        this.floorMat.map = texture;
+        this.floorMat.needsUpdate = true;
+        this._needsRender = true;
+      },
+      undefined,
+      (err) => {
+        console.warn("Failed to load floor texture:", err);
+      }
+    );
+  }
+
+  setFloorTexture(path: string) {
+    this.floorTexturePath = path;
+    this.loadFloorTexture();
+  }
+
   private setupEnvironment() {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
 
     const skyGeo = new THREE.SphereGeometry(50, 32, 16);
     const skyMat = new THREE.MeshBasicMaterial({
-      color: 0x88bbee,
+      color: 0xd8d4d0,
       side: THREE.BackSide,
     });
     envScene.add(new THREE.Mesh(skyGeo, skyMat));
 
-    const gMat = new THREE.MeshBasicMaterial({ color: 0x556633 });
+    const gMat = new THREE.MeshBasicMaterial({ color: 0xb0a898 });
     const gMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(100, 100),
       gMat
@@ -333,6 +427,7 @@ export class Engine3d {
 
     this.envMap = pmrem.fromScene(envScene, 0, 0.1, 100).texture;
     this.scene.environment = this.envMap;
+    this.scene.environmentIntensity = 0.3;
     pmrem.dispose();
   }
 
@@ -351,28 +446,67 @@ export class Engine3d {
   }
 
   private setupLighting() {
-    this.scene.add(new THREE.AmbientLight(0xfff8f0, 0.4));
-    this.scene.add(new THREE.HemisphereLight(0x88bbee, 0x445522, 0.6));
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    this.scene.add(this.ambientLight);
+    
+    this.hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xf0ebe0, 0.5);
+    this.scene.add(this.hemisphereLight);
 
-    const sun = new THREE.DirectionalLight(0xfff5e0, 2.0);
-    sun.position.set(-8, 15, -10);
-    sun.castShadow = true;
-    sun.shadow.mapSize.setScalar(4096);
-    sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 60;
-    sun.shadow.camera.left = -20;
-    sun.shadow.camera.right = 20;
-    sun.shadow.camera.top = 20;
-    sun.shadow.camera.bottom = -20;
-    sun.shadow.bias = -0.0002;
-    sun.shadow.normalBias = 0.02;
-    sun.shadow.radius = 2;
-    this.scene.add(sun);
-    this.scene.add(sun.target);
+    this.sunLight = new THREE.DirectionalLight(0xfff5e0, 1.8);
+    this.sunLight.position.set(-8, 15, -10);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.setScalar(4096);
+    this.sunLight.shadow.camera.near = 0.5;
+    this.sunLight.shadow.camera.far = 60;
+    this.sunLight.shadow.camera.left = -20;
+    this.sunLight.shadow.camera.right = 20;
+    this.sunLight.shadow.camera.top = 20;
+    this.sunLight.shadow.camera.bottom = -20;
+    this.sunLight.shadow.bias = -0.0002;
+    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.radius = 2;
+    this.scene.add(this.sunLight);
+    this.scene.add(this.sunLight.target);
 
-    const fill = new THREE.DirectionalLight(0xaaccff, 0.4);
-    fill.position.set(6, 8, 12);
-    this.scene.add(fill);
+    this.fillLight = new THREE.DirectionalLight(0xfff0e0, 0.3);
+    this.fillLight.position.set(6, 8, 12);
+    this.scene.add(this.fillLight);
+  }
+  
+  setNightMode(enabled: boolean) {
+    this._nightMode = enabled;
+    
+    if (enabled) {
+      if (this.ambientLight) this.ambientLight.intensity = 0.12;
+      if (this.hemisphereLight) this.hemisphereLight.intensity = 0.08;
+      if (this.sunLight) this.sunLight.intensity = 0;
+      if (this.fillLight) this.fillLight.intensity = 0;
+      this.scene.background = new THREE.Color(0x050508);
+      this.scene.environmentIntensity = 0.15;
+      
+      for (const light of this.ceilingLights) {
+        const base = light.userData.baseIntensity ?? 15;
+        light.intensity = base * 5;
+      }
+    } else {
+      if (this.ambientLight) this.ambientLight.intensity = 0.4;
+      if (this.hemisphereLight) this.hemisphereLight.intensity = 0.5;
+      if (this.sunLight) this.sunLight.intensity = 1.8;
+      if (this.fillLight) this.fillLight.intensity = 0.3;
+      this.scene.background = new THREE.Color(0x87ceeb);
+      this.scene.environmentIntensity = 0.3;
+      
+      for (const light of this.ceilingLights) {
+        const base = light.userData.baseIntensity ?? 15;
+        light.intensity = base;
+      }
+    }
+    
+    this.requestRender();
+  }
+  
+  get nightMode() {
+    return this._nightMode;
   }
 
   buildRoom(roomShape: RoomShape) {
@@ -381,10 +515,13 @@ export class Engine3d {
     this.roomGroup = new THREE.Group();
     this.doorPivots = [];
     this.doorMeshes = [];
+    this.ceilingLights = [];
     this.currentRoomShape = roomShape;
 
     this.addFloor(roomShape);
     this.addWalls(roomShape);
+    this.addCeiling(roomShape);
+    this.addLights(roomShape);
     this.buildCollision(roomShape);
 
     this.scene.add(this.roomGroup);
@@ -502,6 +639,449 @@ export class Engine3d {
     mesh.position.y = 0.001;
     mesh.receiveShadow = true;
     this.roomGroup.add(mesh);
+  }
+
+  private addCeiling(roomShape: RoomShape) {
+    const pts = getPerimeter(roomShape);
+    const ceilingH = getCeilingHeight(roomShape) * MM_TO_M;
+    const wallT = roomShape.wallThickness * MM_TO_M;
+    const n = pts.length;
+
+    // Build slope lookup by wall index
+    const slopeMap = new Map<number, { kneeH: number; angle: number; reach: number }>();
+    for (const slope of roomShape.slopes) {
+      const kneeH = slope.kneeWallHeight * MM_TO_M;
+      const angle = slope.roofAngle * (Math.PI / 180);
+      const reach = (ceilingH - kneeH) / Math.tan(angle);
+      slopeMap.set(slope.wall, { kneeH, angle, reach });
+    }
+
+    // Calculate edge perpendiculars (pointing inward) - same as walls use
+    let sa2 = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      sa2 += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    const ccw = sa2 > 0;
+
+    const edgePerp: { nx: number; nz: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % n];
+      const dx = (p2.x - p1.x) * MM_TO_M;
+      const dz = (p2.y - p1.y) * MM_TO_M;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len < 0.0001) {
+        edgePerp.push({ nx: 0, nz: 0 });
+        continue;
+      }
+      if (ccw) {
+        edgePerp.push({ nx: -dz / len, nz: dx / len });
+      } else {
+        edgePerp.push({ nx: dz / len, nz: -dx / len });
+      }
+    }
+
+    // Calculate interior points (offset inward by wall thickness using miter joints)
+    const interiorPts: { x: number; z: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const prev = (i - 1 + n) % n;
+      const ep = edgePerp[prev], ec = edgePerp[i];
+      const px = pts[i].x * MM_TO_M;
+      const pz = pts[i].y * MM_TO_M;
+      
+      if (Math.abs(ep.nx) < 0.0001 && Math.abs(ep.nz) < 0.0001) {
+        interiorPts.push({ x: px + ec.nx * wallT, z: pz + ec.nz * wallT });
+        continue;
+      }
+      if (Math.abs(ec.nx) < 0.0001 && Math.abs(ec.nz) < 0.0001) {
+        interiorPts.push({ x: px + ep.nx * wallT, z: pz + ep.nz * wallT });
+        continue;
+      }
+      
+      const d = ep.nx * ec.nx + ep.nz * ec.nz;
+      if (1 + d < 0.001) {
+        interiorPts.push({ x: px + ec.nx * wallT, z: pz + ec.nz * wallT });
+        continue;
+      }
+      let mx = (ep.nx + ec.nx) * wallT / (1 + d);
+      let mz = (ep.nz + ec.nz) * wallT / (1 + d);
+      const ml = Math.sqrt(mx * mx + mz * mz);
+      const maxM = wallT * 4;
+      if (ml > maxM) {
+        const s = maxM / ml;
+        mx *= s;
+        mz *= s;
+      }
+      interiorPts.push({ x: px + mx, z: pz + mz });
+    }
+
+    // Step 1: Create flat ceiling - same shape as interior floor, at ceiling height
+    const ceilingShape = new THREE.Shape();
+    ceilingShape.moveTo(interiorPts[0].x, interiorPts[0].z);
+    for (let i = 1; i < n; i++) {
+      ceilingShape.lineTo(interiorPts[i].x, interiorPts[i].z);
+    }
+    ceilingShape.closePath();
+    
+    const ceilingGeo = new THREE.ShapeGeometry(ceilingShape);
+    ceilingGeo.rotateX(Math.PI / 2);
+    const ceilingMesh = new THREE.Mesh(ceilingGeo, this.ceilingMat);
+    ceilingMesh.position.y = ceilingH;
+    ceilingMesh.receiveShadow = true;
+    this.roomGroup.add(ceilingMesh);
+
+    // Step 2: Add slopes on top
+    if (slopeMap.size === 0) return;
+
+    const vertices: number[] = [];
+    const indices: number[] = [];
+
+    // Helper: find intersection of two 2D lines
+    // Line 1: p1 + t * d1, Line 2: p2 + s * d2
+    // Returns the intersection point or null if parallel
+    const lineIntersect = (
+      p1x: number, p1z: number, d1x: number, d1z: number,
+      p2x: number, p2z: number, d2x: number, d2z: number
+    ): { x: number; z: number; t: number } | null => {
+      const denom = d1x * d2z - d1z * d2x;
+      if (Math.abs(denom) < 0.0001) return null;
+      const t = ((p2x - p1x) * d2z - (p2z - p1z) * d2x) / denom;
+      return { x: p1x + t * d1x, z: p1z + t * d1z, t };
+    };
+
+    for (let i = 0; i < n; i++) {
+      const slope = slopeMap.get(i);
+      if (!slope) continue;
+
+      const i2 = (i + 1) % n;
+      const prevWall = (i - 1 + n) % n;
+      const nextWall = i2;
+      const ip1 = interiorPts[i];
+      const ip2 = interiorPts[i2];
+      const perp = edgePerp[i];
+      
+      // Check if adjacent walls have slopes
+      const hasPrevSlope = slopeMap.has(prevWall);
+      const hasNextSlope = slopeMap.has(nextWall);
+
+      // Wall direction
+      const wallDx = ip2.x - ip1.x;
+      const wallDz = ip2.z - ip1.z;
+      
+      // Default ridge points (directly above corners)
+      let ridge1x = ip1.x + perp.nx * slope.reach;
+      let ridge1z = ip1.z + perp.nz * slope.reach;
+      let ridge2x = ip2.x + perp.nx * slope.reach;
+      let ridge2z = ip2.z + perp.nz * slope.reach;
+      
+      // Extended base points (default to corners)
+      let base1x = ip1.x, base1z = ip1.z;
+      let base2x = ip2.x, base2z = ip2.z;
+
+      // Extend ridge to meet adjacent walls if they don't have slopes
+      if (!hasPrevSlope) {
+        // Find where ridge line intersects prevWall line
+        const prevIp = interiorPts[prevWall];
+        const prevDx = ip1.x - prevIp.x;
+        const prevDz = ip1.z - prevIp.z;
+        
+        const hit = lineIntersect(
+          ridge1x, ridge1z, wallDx, wallDz,  // Ridge line (extends along wall direction)
+          prevIp.x, prevIp.z, prevDx, prevDz  // PrevWall line
+        );
+        if (hit && hit.t < 0) {  // Extending backwards from ridge1
+          ridge1x = hit.x;
+          ridge1z = hit.z;
+          // Base extends same direction along slope plane
+          base1x = hit.x - perp.nx * slope.reach;
+          base1z = hit.z - perp.nz * slope.reach;
+        }
+      }
+      
+      if (!hasNextSlope) {
+        // Find where ridge line intersects nextWall line
+        const nextNextIp = interiorPts[(nextWall + 1) % n];
+        const nextDx = nextNextIp.x - ip2.x;
+        const nextDz = nextNextIp.z - ip2.z;
+        
+        const hit = lineIntersect(
+          ridge2x, ridge2z, wallDx, wallDz,  // Ridge line
+          ip2.x, ip2.z, nextDx, nextDz  // NextWall line
+        );
+        if (hit && hit.t > 0) {  // Extending forwards from ridge2
+          ridge2x = hit.x;
+          ridge2z = hit.z;
+          // Base extends same direction
+          base2x = hit.x - perp.nx * slope.reach;
+          base2z = hit.z - perp.nz * slope.reach;
+        }
+      }
+
+      // Slope quad from extended base (at kneeH) to extended ridge (at ceilingH)
+      const baseIdx = vertices.length / 3;
+      vertices.push(base1x, slope.kneeH, base1z);
+      vertices.push(base2x, slope.kneeH, base2z);
+      vertices.push(ridge2x, ceilingH, ridge2z);
+      vertices.push(ridge1x, ceilingH, ridge1z);
+      indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+      indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+
+      // Vertical soffit: closes gap between kneeH and ceilingH at wall face
+      const soffitIdx = vertices.length / 3;
+      vertices.push(base1x, slope.kneeH, base1z);
+      vertices.push(base2x, slope.kneeH, base2z);
+      vertices.push(base2x, ceilingH, base2z);
+      vertices.push(base1x, ceilingH, base1z);
+      indices.push(soffitIdx, soffitIdx + 1, soffitIdx + 2);
+      indices.push(soffitIdx, soffitIdx + 2, soffitIdx + 3);
+    }
+
+    if (vertices.length > 0) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      const slopeMesh = new THREE.Mesh(geometry, this.ceilingMat);
+      slopeMesh.receiveShadow = true;
+      this.roomGroup.add(slopeMesh);
+    }
+
+    // Step 3: Fill corners where slopes meet or extend along non-sloped walls
+    for (let i = 0; i < n; i++) {
+      const slope1 = slopeMap.get(i);
+      const prevWall = (i - 1 + n) % n;
+      const slope2 = slopeMap.get(prevWall);
+      
+      if (slope1 && slope2) {
+        // Two slopes meet at this corner - add corner triangle
+        const ip = interiorPts[i];
+        const perp1 = edgePerp[i];
+        const perpPrev = edgePerp[prevWall];
+        
+        const cornerY = Math.max(slope1.kneeH, slope2.kneeH);
+        const ridge1x = ip.x + perp1.nx * slope1.reach;
+        const ridge1z = ip.z + perp1.nz * slope1.reach;
+        const ridge2x = ip.x + perpPrev.nx * slope2.reach;
+        const ridge2z = ip.z + perpPrev.nz * slope2.reach;
+        
+        const triGeo = new THREE.BufferGeometry();
+        const triVerts = [
+          ip.x, cornerY, ip.z,
+          ridge1x, ceilingH, ridge1z,
+          ridge2x, ceilingH, ridge2z,
+        ];
+        triGeo.setAttribute("position", new THREE.Float32BufferAttribute(triVerts, 3));
+        triGeo.setIndex([0, 1, 2]);
+        triGeo.computeVertexNormals();
+        const triMesh = new THREE.Mesh(triGeo, this.ceilingMat);
+        triMesh.receiveShadow = true;
+        this.roomGroup.add(triMesh);
+      }
+      // No separate extensions needed - the main slope is already extended to meet adjacent walls
+    }
+  }
+
+  private addLights(roomShape: RoomShape) {
+    const lights = roomShape.lights ?? [];
+    const ceilingH = getCeilingHeight(roomShape) * MM_TO_M;
+
+    for (const light of lights) {
+      const x = light.x * MM_TO_M;
+      const z = light.y * MM_TO_M;
+
+      if (light.type === "pendant") {
+        this.addPendantLight(x, z, ceilingH, light);
+      } else if (light.type === "spotlight") {
+        this.addSpotlight(x, z, ceilingH, light);
+      }
+    }
+  }
+
+  private addPendantLight(x: number, z: number, ceilingH: number, light: CeilingLight) {
+    const cableLength = (light.cableLength ?? 150) * MM_TO_M;
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    // Ceiling rose (mounting plate)
+    const roseRadius = 0.04;
+    const roseHeight = 0.015;
+    const roseGeo = new THREE.CylinderGeometry(roseRadius, roseRadius, roseHeight, 16);
+    const roseMesh = new THREE.Mesh(roseGeo, this.lightFixtureMat);
+    roseMesh.position.y = ceilingH - roseHeight / 2;
+    roseMesh.castShadow = true;
+    group.add(roseMesh);
+
+    // Twisted cable
+    const cableRadius = 0.004;
+    const cableGeo = new THREE.CylinderGeometry(cableRadius, cableRadius, cableLength, 8);
+    const cableMesh = new THREE.Mesh(cableGeo, this.cableMat);
+    cableMesh.position.y = ceilingH - roseHeight - cableLength / 2;
+    group.add(cableMesh);
+
+    // Bulb socket
+    const socketRadius = 0.018;
+    const socketHeight = 0.045;
+    const socketGeo = new THREE.CylinderGeometry(socketRadius, socketRadius * 0.9, socketHeight, 12);
+    const socketMesh = new THREE.Mesh(socketGeo, this.lightFixtureMat);
+    socketMesh.position.y = ceilingH - roseHeight - cableLength - socketHeight / 2;
+    socketMesh.castShadow = true;
+    group.add(socketMesh);
+
+    // Edison bulb shape
+    const bulbY = ceilingH - roseHeight - cableLength - socketHeight;
+    
+    // Bulb base (narrower part inside socket)
+    const bulbBaseGeo = new THREE.CylinderGeometry(0.012, 0.014, 0.02, 12);
+    const bulbBaseMesh = new THREE.Mesh(bulbBaseGeo, this.lightBulbMat);
+    bulbBaseMesh.position.y = bulbY - 0.01;
+    group.add(bulbBaseMesh);
+
+    // Bulb main body (teardrop shape using lathe)
+    const bulbPoints = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      const y = -t * 0.08;
+      const r = Math.sin(t * Math.PI) * 0.028 + 0.008;
+      bulbPoints.push(new THREE.Vector2(r, y));
+    }
+    const bulbGeo = new THREE.LatheGeometry(bulbPoints, 16);
+    const bulbMesh = new THREE.Mesh(bulbGeo, this.lightBulbMat);
+    bulbMesh.position.y = bulbY - 0.02;
+    group.add(bulbMesh);
+
+    // Add actual point light
+    const lightColor = this.getLightColor(light, 2700);
+    const baseIntensity = (light.intensity ?? 1) * 15;
+    const pointLight = new THREE.PointLight(lightColor, baseIntensity, 8);
+    pointLight.position.y = bulbY - 0.05;
+    pointLight.castShadow = true;
+    pointLight.shadow.mapSize.width = 512;
+    pointLight.shadow.mapSize.height = 512;
+    pointLight.userData.baseIntensity = baseIntensity;
+    if (this._nightMode) {
+      pointLight.intensity = baseIntensity * 2.5;
+    }
+    group.add(pointLight);
+    this.ceilingLights.push(pointLight);
+
+    this.roomGroup.add(group);
+  }
+
+  private addSpotlight(x: number, z: number, ceilingH: number, light: CeilingLight) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    const outerRadius = 0.06;
+    const innerRadius = 0.025;
+    const depth = 0.015;
+
+    // Chrome outer ring/bezel - torus for 3D appearance
+    const torusGeo = new THREE.TorusGeometry(outerRadius - 0.008, 0.008, 16, 32);
+    torusGeo.rotateX(Math.PI / 2);
+    const torusMesh = new THREE.Mesh(torusGeo, this.spotlightRimMat);
+    torusMesh.position.y = ceilingH - 0.008;
+    group.add(torusMesh);
+
+    // Chrome disc/plate (flat ring between outer and inner)
+    const plateGeo = new THREE.CylinderGeometry(outerRadius - 0.012, outerRadius - 0.012, 0.003, 32);
+    const plateMesh = new THREE.Mesh(plateGeo, this.spotlightRimMat);
+    plateMesh.position.y = ceilingH - depth / 2;
+    group.add(plateMesh);
+
+    // Inner chrome ring around bulb
+    const innerTorusGeo = new THREE.TorusGeometry(innerRadius + 0.005, 0.005, 12, 24);
+    innerTorusGeo.rotateX(Math.PI / 2);
+    const innerTorusMesh = new THREE.Mesh(innerTorusGeo, this.spotlightRimMat);
+    innerTorusMesh.position.y = ceilingH - depth;
+    group.add(innerTorusMesh);
+
+    // Glowing bulb/lens in center
+    const lightColor = this.getLightColor(light, 4000);
+    
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: lightColor,
+      emissiveIntensity: (light.intensity ?? 1) * 3,
+      roughness: 0.2,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.95,
+    });
+    
+    // Bulb as a slight dome
+    const bulbGeo = new THREE.SphereGeometry(innerRadius, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    bulbGeo.rotateX(Math.PI);
+    const bulbMesh = new THREE.Mesh(bulbGeo, bulbMat);
+    bulbMesh.position.y = ceilingH - depth;
+    group.add(bulbMesh);
+
+    // Flat lens cover
+    const lensGeo = new THREE.CircleGeometry(innerRadius, 24);
+    lensGeo.rotateX(Math.PI / 2);
+    const lensMesh = new THREE.Mesh(lensGeo, bulbMat);
+    lensMesh.position.y = ceilingH - depth + 0.001;
+    group.add(lensMesh);
+
+    // Add actual spotlight for scene illumination
+    const baseIntensity = (light.intensity ?? 1) * 30;
+    const beamAngle = (light.beamAngle ?? 40) * Math.PI / 180;
+    
+    const spotLight = new THREE.SpotLight(lightColor, baseIntensity);
+    spotLight.position.y = ceilingH - depth - 0.01;
+    spotLight.angle = beamAngle / 2;
+    spotLight.penumbra = 0.4;
+    spotLight.decay = 2;
+    spotLight.distance = 8;
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 512;
+    spotLight.shadow.mapSize.height = 512;
+    
+    // Target pointing down
+    const target = new THREE.Object3D();
+    target.position.set(x, 0, z);
+    this.roomGroup.add(target);
+    spotLight.target = target;
+    spotLight.userData.baseIntensity = baseIntensity;
+    if (this._nightMode) {
+      spotLight.intensity = baseIntensity * 2.5;
+    }
+    
+    group.add(spotLight);
+    this.ceilingLights.push(spotLight);
+
+    this.roomGroup.add(group);
+  }
+
+  private getLightColor(light: CeilingLight, defaultColorTemp: number): number {
+    if (light.rgb) {
+      return (light.rgb.r << 16) | (light.rgb.g << 8) | light.rgb.b;
+    }
+    return this.colorTempToRGB(light.colorTemp ?? defaultColorTemp);
+  }
+
+  private colorTempToRGB(kelvin: number): number {
+    // Convert color temperature to RGB
+    const temp = kelvin / 100;
+    let r: number, g: number, b: number;
+
+    if (temp <= 66) {
+      r = 255;
+      g = Math.min(255, Math.max(0, 99.4708025861 * Math.log(temp) - 161.1195681661));
+    } else {
+      r = Math.min(255, Math.max(0, 329.698727446 * Math.pow(temp - 60, -0.1332047592)));
+      g = Math.min(255, Math.max(0, 288.1221695283 * Math.pow(temp - 60, -0.0755148492)));
+    }
+
+    if (temp >= 66) {
+      b = 255;
+    } else if (temp <= 19) {
+      b = 0;
+    } else {
+      b = Math.min(255, Math.max(0, 138.5177312231 * Math.log(temp - 10) - 305.0447927307));
+    }
+
+    return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
   }
 
   private addWalls(roomShape: RoomShape) {
@@ -644,7 +1224,7 @@ export class Engine3d {
 
       const mesh = new THREE.Mesh(geo, wallMats);
       mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      mesh.receiveShadow = false;
       mesh.position.set(p1.x * MM_TO_M, 0, p1.y * MM_TO_M);
       mesh.rotation.y = -angle;
       this.roomGroup.add(mesh);
@@ -660,6 +1240,111 @@ export class Engine3d {
         this.addInset(ins, p1, angle, wallT, roomShape);
       }
     }
+  }
+
+
+  private addArchitrave(
+    parent: THREE.Group,
+    l: number, b: number, w: number, h: number,
+    wallT: number
+  ) {
+    const archW = 0.058;  // 58mm wide
+    const archD = 0.015;  // 15mm projection from wall
+
+    // Regency profile cross-section: [widthOffset, depthOffset]
+    // wo: 0 = inner edge (at door frame), archW = outer edge (on wall)
+    // dpo: 0 = wall surface, archD = peak projection into room
+    const profile: [number, number][] = [
+      [0,             0],
+      [0,             archD * 0.15],
+      [archW * 0.04,  archD * 0.15],
+      [archW * 0.04,  archD * 0.40],
+      [archW * 0.08,  archD * 0.58],
+      [archW * 0.13,  archD * 0.78],
+      [archW * 0.20,  archD * 0.93],
+      [archW * 0.28,  archD],
+      [archW * 0.38,  archD * 0.92],
+      [archW * 0.46,  archD * 0.78],
+      [archW * 0.52,  archD * 0.68],
+      [archW * 0.58,  archD * 0.74],
+      [archW * 0.66,  archD * 0.65],
+      [archW * 0.73,  archD * 0.52],
+      [archW * 0.80,  archD * 0.38],
+      [archW * 0.87,  archD * 0.24],
+      [archW * 0.93,  archD * 0.14],
+      [archW,         archD * 0.14],
+      [archW,         0],
+    ];
+
+    // How far the architrave overlaps the frame (leaves ~8mm of casing visible)
+    const inset = 0.048;
+
+    // Left vertical piece
+    this.buildMouldingStrip(parent, profile,
+      (wo, dpo) => [l + inset - wo, b,                    wallT + dpo],
+      (wo, dpo) => [l + inset - wo, b + h - inset + wo,   wallT + dpo]
+    );
+
+    // Right vertical piece
+    this.buildMouldingStrip(parent, profile,
+      (wo, dpo) => [l + w - inset + wo, b,                    wallT + dpo],
+      (wo, dpo) => [l + w - inset + wo, b + h - inset + wo,   wallT + dpo]
+    );
+
+    // Top horizontal piece
+    this.buildMouldingStrip(parent, profile,
+      (wo, dpo) => [l + inset - wo,     b + h - inset + wo, wallT + dpo],
+      (wo, dpo) => [l + w - inset + wo, b + h - inset + wo, wallT + dpo]
+    );
+  }
+
+  private buildMouldingStrip(
+    parent: THREE.Group,
+    profile: [number, number][],
+    mapStart: (wo: number, dpo: number) => [number, number, number],
+    mapEnd: (wo: number, dpo: number) => [number, number, number]
+  ) {
+    const np = profile.length;
+    const vertices: number[] = [];
+    const indices: number[] = [];
+
+    // Two vertices per profile point: one at each end of the strip
+    for (let i = 0; i < np; i++) {
+      const [wo, dpo] = profile[i];
+      const s = mapStart(wo, dpo);
+      const e = mapEnd(wo, dpo);
+      vertices.push(s[0], s[1], s[2]);  // even index = start end
+      vertices.push(e[0], e[1], e[2]);  // odd index  = finish end
+    }
+
+    // Side faces: quads connecting adjacent profile points between start and end
+    for (let i = 0; i < np; i++) {
+      const ni = (i + 1) % np;
+      const a = i * 2, b = i * 2 + 1;
+      const c = ni * 2, d = ni * 2 + 1;
+      indices.push(a, c, d);
+      indices.push(a, d, b);
+    }
+
+    // Start cap (bottom of verticals, left end of top piece)
+    for (let i = 1; i < np - 1; i++) {
+      indices.push(0, (i + 1) * 2, i * 2);
+    }
+
+    // End cap (mitred top of verticals, right end of top piece)
+    for (let i = 1; i < np - 1; i++) {
+      indices.push(1, i * 2 + 1, (i + 1) * 2 + 1);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geo, this.mouldingMat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
   }
 
   private addOpeningChamfer(
@@ -746,9 +1431,10 @@ export class Engine3d {
       geo.setIndex(idx);
       geo.computeVertexNormals();
 
-      const chamferMesh = new THREE.Mesh(geo, this.wallExtMat);
-      chamferMesh.castShadow = true;
-      chamferMesh.receiveShadow = true;
+      const chamferMat = exterior ? this.wallExtMat : this.wallIntMat;
+      const chamferMesh = new THREE.Mesh(geo, chamferMat);
+      chamferMesh.castShadow = exterior;
+      chamferMesh.receiveShadow = exterior;
       chamferMesh.position.set(wallStart.x * MM_TO_M, 0, wallStart.y * MM_TO_M);
       chamferMesh.rotation.y = -wallAngle;
       this.roomGroup.add(chamferMesh);
@@ -838,7 +1524,7 @@ export class Engine3d {
         b - sillHBack,
         sillInner
       );
-      sillMesh.castShadow = true;
+      sillMesh.castShadow = false;
       parent.add(sillMesh);
 
       if (ins.openings.length === 0) {
@@ -1166,7 +1852,7 @@ export class Engine3d {
       const leftFrameGeo = new THREE.BoxGeometry(df + ext, h + ext, wallT);
       const leftFrameMesh = new THREE.Mesh(leftFrameGeo, this.frameMat);
       leftFrameMesh.position.set(l + (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
-      leftFrameMesh.castShadow = true;
+      leftFrameMesh.castShadow = false;
       leftFrameMesh.receiveShadow = true;
       parent.add(leftFrameMesh);
       frameMeshes.push(leftFrameMesh);
@@ -1175,7 +1861,7 @@ export class Engine3d {
       const topFrameGeo = new THREE.BoxGeometry(w + ext * 2, df + ext, wallT);
       const topFrameMesh = new THREE.Mesh(topFrameGeo, this.frameMat);
       topFrameMesh.position.set(l + w / 2, b + h + ext / 2 - df / 2, wallT / 2);
-      topFrameMesh.castShadow = true;
+      topFrameMesh.castShadow = false;
       topFrameMesh.receiveShadow = true;
       parent.add(topFrameMesh);
       frameMeshes.push(topFrameMesh);
@@ -1184,10 +1870,13 @@ export class Engine3d {
       const rightFrameGeo = new THREE.BoxGeometry(df + ext, h + ext, wallT);
       const rightFrameMesh = new THREE.Mesh(rightFrameGeo, this.frameMat);
       rightFrameMesh.position.set(l + w - (df - ext) / 2, b + (h + ext) / 2, wallT / 2);
-      rightFrameMesh.castShadow = true;
+      rightFrameMesh.castShadow = false;
       rightFrameMesh.receiveShadow = true;
       parent.add(rightFrameMesh);
       frameMeshes.push(rightFrameMesh);
+
+      // Architrave moulding on interior side
+      this.addArchitrave(parent, l, b, w, h, wallT);
 
       const innerW = w - df * 2;
       const innerH = h - df;
@@ -1338,7 +2027,7 @@ export class Engine3d {
 
   private buildPanelledDoor(w: number, h: number, thick: number, leftHung: boolean, hasHandle: boolean): THREE.Group {
     const group = new THREE.Group();
-    const recess = 0.003;
+    const recess = 0.006;
     const panelDepth = thick - recess * 2;
 
     const stileW = Math.max(w * 0.14, 0.040);
@@ -1351,10 +2040,10 @@ export class Engine3d {
     const hw = w / 2;
     const hh = h / 2;
 
-    const bar = (cx: number, cy: number, bw: number, bh: number, bd: number) => {
+    const bar = (cx: number, cy: number, bw: number, bh: number, bd: number, isPanel = false) => {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(bw, bh, bd),
-        this.doorMat
+        isPanel ? this.doorPanelMat : this.doorMat
       );
       mesh.position.set(cx, cy, 0);
       mesh.castShadow = true;
@@ -1390,15 +2079,64 @@ export class Engine3d {
     const leftCX = -hw + stileW + pnlW / 2;
     const rightCX = hw - stileW - pnlW / 2;
 
+    const addPanel = (cx: number, cy: number, pw: number, ph: number) => {
+      const mouldW = 0.015;
+      const bevelD = 0.005;
+      const panelD = 0.004;
+      
+      // Recessed flat center panel
+      const innerW = pw - mouldW * 2;
+      const innerH = ph - mouldW * 2;
+      const panelGeo = new THREE.BoxGeometry(innerW, innerH, panelD);
+      const panelMesh = new THREE.Mesh(panelGeo, this.doorPanelMat);
+      panelMesh.position.set(cx, cy, -(thick / 2 - recess - panelD / 2));
+      panelMesh.castShadow = true;
+      panelMesh.receiveShadow = true;
+      group.add(panelMesh);
+      
+      // Outer moulding frame (sits between frame and panel)
+      // Top moulding
+      const topGeo = new THREE.BoxGeometry(pw, mouldW, bevelD);
+      const topMesh = new THREE.Mesh(topGeo, this.doorMat);
+      topMesh.position.set(cx, cy + ph / 2 - mouldW / 2, -(thick / 2 - recess / 2 - bevelD / 2));
+      topMesh.castShadow = true;
+      topMesh.receiveShadow = true;
+      group.add(topMesh);
+      
+      // Bottom moulding
+      const btmGeo = new THREE.BoxGeometry(pw, mouldW, bevelD);
+      const btmMesh = new THREE.Mesh(btmGeo, this.doorMat);
+      btmMesh.position.set(cx, cy - ph / 2 + mouldW / 2, -(thick / 2 - recess / 2 - bevelD / 2));
+      btmMesh.castShadow = true;
+      btmMesh.receiveShadow = true;
+      group.add(btmMesh);
+      
+      // Left moulding
+      const leftGeo = new THREE.BoxGeometry(mouldW, ph - mouldW * 2, bevelD);
+      const leftMesh = new THREE.Mesh(leftGeo, this.doorMat);
+      leftMesh.position.set(cx - pw / 2 + mouldW / 2, cy, -(thick / 2 - recess / 2 - bevelD / 2));
+      leftMesh.castShadow = true;
+      leftMesh.receiveShadow = true;
+      group.add(leftMesh);
+      
+      // Right moulding
+      const rightGeo = new THREE.BoxGeometry(mouldW, ph - mouldW * 2, bevelD);
+      const rightMesh = new THREE.Mesh(rightGeo, this.doorMat);
+      rightMesh.position.set(cx + pw / 2 - mouldW / 2, cy, -(thick / 2 - recess / 2 - bevelD / 2));
+      rightMesh.castShadow = true;
+      rightMesh.receiveShadow = true;
+      group.add(rightMesh);
+    };
+
     if (btmMuntinH > 0.01) {
       const cy = (btmMuntinBot + btmMuntinTop) / 2;
-      bar(leftCX, cy, pnlW, btmMuntinH, panelDepth);
-      bar(rightCX, cy, pnlW, btmMuntinH, panelDepth);
+      addPanel(leftCX, cy, pnlW, btmMuntinH);
+      addPanel(rightCX, cy, pnlW, btmMuntinH);
     }
     if (topMuntinH > 0.01) {
       const cy = (topMuntinBot + topMuntinTop) / 2;
-      bar(leftCX, cy, pnlW, topMuntinH, panelDepth);
-      bar(rightCX, cy, pnlW, topMuntinH, panelDepth);
+      addPanel(leftCX, cy, pnlW, topMuntinH);
+      addPanel(rightCX, cy, pnlW, topMuntinH);
     }
 
     // Add lever handles on both sides of the door (if enabled)
@@ -1929,10 +2667,18 @@ export class Engine3d {
     this.wallExtMat.dispose();
     this.wallIntMat.dispose();
     this.floorMat.dispose();
+    this.floorTexture?.dispose();
+    this.ceilingMat.dispose();
+    this.mouldingMat.dispose();
     this.glassMat.dispose();
     this.frameMat.dispose();
     this.doorMat.dispose();
+    this.doorPanelMat.dispose();
     this.handleMat.dispose();
+    this.lightFixtureMat.dispose();
+    this.lightBulbMat.dispose();
+    this.spotlightRimMat.dispose();
+    this.cableMat.dispose();
     this.envMap?.dispose();
     if (this.groundMesh) {
       this.groundMesh.geometry.dispose();

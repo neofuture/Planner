@@ -8,7 +8,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { Engine2d } from "@/lib/engine2d";
-import type { RoomShape, ActiveItem, Wall } from "@/lib/types";
+import type { RoomShape, ActiveItem, Wall, CeilingLight } from "@/lib/types";
 import styles from "./Engine2D.module.css";
 
 interface Engine2DProps {
@@ -19,6 +19,7 @@ interface Engine2DProps {
   onAnimationComplete?: () => void;
   onRoomDataChanged?: () => void;
   onContextMenu?: (x: number, y: number, type: "wall" | "anchor", index: number) => void;
+  onLightSelected?: (light: CeilingLight | null) => void;
 }
 
 export interface Engine2DHandle {
@@ -26,7 +27,7 @@ export interface Engine2DHandle {
 }
 
 const Engine2D = forwardRef<Engine2DHandle, Engine2DProps>(function Engine2D(
-  { roomShape, onZoomLevelChange, onSelectedItemChange, onWallsListChange, onAnimationComplete, onRoomDataChanged, onContextMenu },
+  { roomShape, onZoomLevelChange, onSelectedItemChange, onWallsListChange, onAnimationComplete, onRoomDataChanged, onContextMenu, onLightSelected },
   ref
 ) {
   const canvasGridRef = useRef<HTMLCanvasElement>(null);
@@ -69,6 +70,8 @@ const Engine2D = forwardRef<Engine2DHandle, Engine2DProps>(function Engine2D(
       () => onRoomDataChanged?.(),
       (x, y, type, index) => onContextMenu?.(x, y, type, index)
     );
+    
+    engine.setLightSelectedCallback((light) => onLightSelected?.(light));
 
     const timer = setTimeout(() => {
       engine.startEngine(

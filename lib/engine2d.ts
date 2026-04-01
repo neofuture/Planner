@@ -6,6 +6,7 @@ import type {
   ItemDefinition,
   Inset,
   InteractionMode,
+  CeilingLight,
 } from "./types";
 import { getPerimeter, getCeilingHeight } from "./types";
 
@@ -22,6 +23,8 @@ export type ContextMenuCallback = (
   type: "wall" | "anchor",
   index: number
 ) => void;
+
+export type LightSelectedCallback = (light: CeilingLight | null) => void;
 
 export class Engine2d {
   private originalViewPortX = 0;
@@ -86,6 +89,10 @@ export class Engine2d {
   showFlooring = false;
   showLocks = true;
   showInsetOpenings = true;
+  showLights = true;
+
+  private onLightSelected: LightSelectedCallback | null = null;
+  private selectedLightId: string | null = null;
 
   private floorAngle = 0;
   private contextInsets!: CanvasRenderingContext2D;
@@ -104,8 +111,9 @@ export class Engine2d {
   private centerY = 0;
   private lastScale = 0;
   private mode: InteractionMode = "all";
-  private flooring!: HTMLCanvasElement;
+  private flooring!: HTMLImageElement;
   private flooringReady = false;
+  private floorTexturePath = "/textures/flooring/floor-wood-1.jpg";
   private floorGap = 0;
   private floorOffset = 0;
   private floorPositionX = 0;
@@ -124,44 +132,28 @@ export class Engine2d {
 
   constructor() {
     if (typeof window !== "undefined") {
-      this.flooring = this.createWoodTexture(200, 100);
-      this.flooringReady = true;
+      this.loadFloorTexture(this.floorTexturePath);
     }
   }
 
-  private createWoodTexture(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext("2d")!;
+  private loadFloorTexture(path: string) {
+    this.flooringReady = false;
+    const img = new Image();
+    img.onload = () => {
+      this.flooring = img;
+      this.flooringReady = true;
+      this.planView();
+    };
+    img.onerror = () => {
+      console.warn("Failed to load floor texture:", path);
+      this.flooringReady = false;
+    };
+    img.src = path;
+  }
 
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, "#b5864a");
-    gradient.addColorStop(0.3, "#a07040");
-    gradient.addColorStop(0.5, "#c49555");
-    gradient.addColorStop(0.7, "#a07040");
-    gradient.addColorStop(1, "#8b6035");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.globalAlpha = 0.15;
-    for (let y = 0; y < h; y += 2) {
-      const offset = Math.sin(y * 0.3) * 3;
-      ctx.strokeStyle = y % 6 < 3 ? "#6b4020" : "#c89060";
-      ctx.beginPath();
-      ctx.moveTo(offset, y + 0.5);
-      ctx.lineTo(w + offset, y + 0.5);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1.0;
-
-    ctx.strokeStyle = "#6b4020";
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.3;
-    ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
-    ctx.globalAlpha = 1.0;
-
-    return c;
+  setFloorTexture(path: string) {
+    this.floorTexturePath = path;
+    this.loadFloorTexture(path);
   }
 
   setCallbacks(
@@ -459,6 +451,34 @@ export class Engine2d {
         this.roomShape.insets[this.dragItem.id].positionLeft = position;
       }
 
+      if (this.dragItem.type === "light") {
+        const lights = this.roomShape.lights;
+        if (lights) {
+          const lightIndex = lights.findIndex(l => l.id === this.dragItem.identity);
+          if (lightIndex >= 0) {
+            let newX = (this.x - this.lastX) / this.scale + (this.dragItem.origin?.x ?? lights[lightIndex].x);
+            let newY = (this.y - this.lastY) / this.scale + (this.dragItem.origin?.y ?? lights[lightIndex].y);
+            
+            if (this.snapToGrid) {
+              newX = Math.round(newX / 100) * 100;
+              newY = Math.round(newY / 100) * 100;
+            }
+            
+            // Update light position
+            lights[lightIndex].x = newX;
+            lights[lightIndex].y = newY;
+            
+            // Store origin for smooth dragging
+            this.dragItem.origin = { x: newX, y: newY };
+            this.lastX = this.x;
+            this.lastY = this.y;
+            
+            // Update callback
+            this.onLightSelected?.(lights[lightIndex]);
+          }
+        }
+      }
+
       this.planView();
       this.onRoomDataChanged?.();
     }
@@ -576,6 +596,7 @@ export class Engine2d {
     this.drawCorners();
     this.drawLetters();
     this.drawSlopes();
+    this.drawLights();
     this.drawWalls();
     this.drawInsets();
     this.drawMeasurements();
@@ -2293,6 +2314,224 @@ export class Engine2d {
     this.context.restore();
   }
 
+  private drawLights() {
+    if (!this.showLights) return;
+    const lights = this.roomShape.lights ?? [];
+    if (lights.length === 0) return;
+
+    const lightRadius = 200; // Visual radius in mm for the light symbol
+
+    for (const light of lights) {
+      const cx = (light.x + this.viewPortX) * this.scale;
+      const cy = (light.y + this.viewPortY) * this.scale;
+      const r = lightRadius * this.scale;
+      const selected = this.selectedLightId === light.id;
+
+      // Check if light is under a slope (for visual indication)
+      const underSlope = this.isLightUnderSlope(light.x, light.y);
+      
+      // Get light color - use RGB if set, otherwise default colors
+      const hasRgb = light.rgb !== undefined;
+      const rgbStr = hasRgb ? `${light.rgb!.r}, ${light.rgb!.g}, ${light.rgb!.b}` : "";
+
+      this.context.save();
+
+      if (light.type === "pendant") {
+        // Draw pendant light symbol - circle with inner circle
+        this.context.beginPath();
+        this.context.arc(cx, cy, r, 0, 2 * Math.PI);
+        this.context.fillStyle = selected
+          ? "rgba(255, 200, 50, 0.4)"
+          : underSlope
+          ? "rgba(255, 100, 100, 0.3)"
+          : hasRgb
+          ? `rgba(${rgbStr}, 0.3)`
+          : "rgba(255, 230, 150, 0.4)";
+        this.context.fill();
+        this.context.strokeStyle = selected 
+          ? "#ff9900" 
+          : underSlope 
+          ? "#ff3333" 
+          : hasRgb
+          ? `rgb(${rgbStr})`
+          : "#cca033";
+        this.context.lineWidth = 3;
+        this.context.stroke();
+
+        // Inner bulb circle
+        this.context.beginPath();
+        this.context.arc(cx, cy, r * 0.4, 0, 2 * Math.PI);
+        this.context.fillStyle = selected 
+          ? "#ffcc00" 
+          : hasRgb 
+          ? `rgb(${rgbStr})` 
+          : "#ffe066";
+        this.context.fill();
+        this.context.strokeStyle = selected 
+          ? "#ff9900" 
+          : hasRgb
+          ? `rgb(${rgbStr})`
+          : "#cca033";
+        this.context.lineWidth = 2;
+        this.context.stroke();
+      } else if (light.type === "spotlight") {
+        // Draw spotlight symbol - circle with crosshairs
+        this.context.beginPath();
+        this.context.arc(cx, cy, r * 0.7, 0, 2 * Math.PI);
+        this.context.fillStyle = selected
+          ? "rgba(200, 220, 255, 0.5)"
+          : underSlope
+          ? "rgba(255, 100, 100, 0.3)"
+          : hasRgb
+          ? `rgba(${rgbStr}, 0.3)`
+          : "rgba(220, 230, 255, 0.4)";
+        this.context.fill();
+        this.context.strokeStyle = selected 
+          ? "#3366ff" 
+          : underSlope 
+          ? "#ff3333" 
+          : hasRgb
+          ? `rgb(${rgbStr})`
+          : "#6699cc";
+        this.context.lineWidth = 3;
+        this.context.stroke();
+
+        // Inner lens
+        this.context.beginPath();
+        this.context.arc(cx, cy, r * 0.35, 0, 2 * Math.PI);
+        this.context.fillStyle = selected 
+          ? "#99ccff" 
+          : hasRgb
+          ? `rgb(${rgbStr})`
+          : "#cce0ff";
+        this.context.fill();
+
+        // Chrome ring
+        this.context.beginPath();
+        this.context.arc(cx, cy, r * 0.7, 0, 2 * Math.PI);
+        this.context.strokeStyle = selected 
+          ? "#3366ff" 
+          : hasRgb
+          ? `rgb(${rgbStr})`
+          : "#aabbcc";
+        this.context.lineWidth = r * 0.15;
+        this.context.stroke();
+      }
+
+      // Selection handles when selected (triangles pointing outward)
+      if (selected) {
+        const hs = 50 * this.scale; // triangle size
+        const visualRadius = light.type === "spotlight" ? r * 0.7 : r;
+        const offset = visualRadius + hs * 0.3;
+        this.context.fillStyle = "#ff9900";
+        
+        // Top triangle (pointing up)
+        this.context.beginPath();
+        this.context.moveTo(cx, cy - offset - hs);
+        this.context.lineTo(cx - hs * 0.6, cy - offset);
+        this.context.lineTo(cx + hs * 0.6, cy - offset);
+        this.context.closePath();
+        this.context.fill();
+        
+        // Bottom triangle (pointing down)
+        this.context.beginPath();
+        this.context.moveTo(cx, cy + offset + hs);
+        this.context.lineTo(cx - hs * 0.6, cy + offset);
+        this.context.lineTo(cx + hs * 0.6, cy + offset);
+        this.context.closePath();
+        this.context.fill();
+        
+        // Left triangle (pointing left)
+        this.context.beginPath();
+        this.context.moveTo(cx - offset - hs, cy);
+        this.context.lineTo(cx - offset, cy - hs * 0.6);
+        this.context.lineTo(cx - offset, cy + hs * 0.6);
+        this.context.closePath();
+        this.context.fill();
+        
+        // Right triangle (pointing right)
+        this.context.beginPath();
+        this.context.moveTo(cx + offset + hs, cy);
+        this.context.lineTo(cx + offset, cy - hs * 0.6);
+        this.context.lineTo(cx + offset, cy + hs * 0.6);
+        this.context.closePath();
+        this.context.fill();
+      }
+
+      this.context.restore();
+
+      // Add to item definitions for click detection
+      if (this.mode === "all") {
+        const polyRadius = lightRadius * 1.2;
+        this.itemDefinitions.push({
+          type: "light",
+          identity: light.id,
+          id: lights.indexOf(light),
+          wall: -1,
+          poly: [
+            { x: cx - polyRadius * this.scale, y: cy - polyRadius * this.scale },
+            { x: cx + polyRadius * this.scale, y: cy - polyRadius * this.scale },
+            { x: cx + polyRadius * this.scale, y: cy + polyRadius * this.scale },
+            { x: cx - polyRadius * this.scale, y: cy + polyRadius * this.scale },
+          ],
+        });
+      }
+    }
+  }
+
+  isLightUnderSlope(lightX: number, lightY: number): boolean {
+    if (!this.roomShape.slopes?.length) return false;
+
+    const ceilingH = getCeilingHeight(this.roomShape);
+    const walls = this.walls;
+
+    for (const slope of this.roomShape.slopes) {
+      const w = slope.wall;
+      if (w >= walls.length) continue;
+
+      const wall = walls[w];
+      const depth = this.calculateSlopeDepth(ceilingH, slope.kneeWallHeight, slope.roofAngle);
+
+      // Get slope polygon corners
+      const len = depth;
+      const angle = wall.angle ?? 0;
+      const perpX = Math.sin(angle);
+      const perpY = -Math.cos(angle);
+
+      const x1 = wall.x1;
+      const y1 = wall.y1;
+      const x2 = wall.x2;
+      const y2 = wall.y2;
+      const x3 = x2 + perpX * len;
+      const y3 = y2 + perpY * len;
+      const x4 = x1 + perpX * len;
+      const y4 = y1 + perpY * len;
+
+      // Check if point is inside slope polygon
+      if (this.pointInPolygon(lightX, lightY, [
+        { x: x1, y: y1 },
+        { x: x2, y: y2 },
+        { x: x3, y: y3 },
+        { x: x4, y: y4 },
+      ])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private pointInPolygon(px: number, py: number, polygon: Point[]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
   private renderGrabHandle(
     context: CanvasRenderingContext2D,
     x: number,
@@ -2578,6 +2817,15 @@ export class Engine2d {
             return;
           }
           if (item.type === "ground" || item.type === "slope") return;
+          if (item.type === "light") {
+            this.selectedLightId = item.identity as string;
+            const light = this.roomShape.lights?.find(l => l.id === item.identity);
+            this.onLightSelected?.(light ?? null);
+            this.dragItem = item;
+            this.isDragging = false;
+            this.planView();
+            return;
+          }
           if (item.type === "inset") {
             this.dragItem = item;
             this.isDragging = false;
@@ -2597,6 +2845,8 @@ export class Engine2d {
         wall: -1,
         identity: -1,
       };
+      this.selectedLightId = null;
+      this.onLightSelected?.(null);
       this.onSelectedItem?.(this.activeItem);
     }
   }
@@ -2644,6 +2894,86 @@ export class Engine2d {
 
   setSlopes(v: boolean) {
     this.showSlopes = v;
+    this.planView();
+  }
+
+  setLights(v: boolean) {
+    this.showLights = v;
+    this.planView();
+  }
+
+  setLightSelectedCallback(cb: LightSelectedCallback) {
+    this.onLightSelected = cb;
+  }
+
+  selectLight(lightId: string | null) {
+    this.selectedLightId = lightId;
+    if (lightId) {
+      const light = this.roomShape.lights?.find(l => l.id === lightId);
+      this.onLightSelected?.(light ?? null);
+    } else {
+      this.onLightSelected?.(null);
+    }
+    this.planView();
+  }
+
+  updateLight(lightId: string, updates: Partial<CeilingLight>) {
+    const lights = this.roomShape.lights;
+    if (!lights) return;
+    const lightIndex = lights.findIndex(l => l.id === lightId);
+    if (lightIndex >= 0) {
+      Object.assign(lights[lightIndex], updates);
+      this.onLightSelected?.(lights[lightIndex]);
+      this.onRoomDataChanged?.();
+      this.planView();
+    }
+  }
+
+  repositionLightsAwayFromSlopes() {
+    const lights = this.roomShape.lights;
+    if (!lights || lights.length === 0) return;
+
+    const ceilingH = getCeilingHeight(this.roomShape);
+    const ground = this.ground;
+    
+    // Calculate room centroid as fallback position
+    let cx = 0, cy = 0;
+    for (const p of ground) {
+      cx += p.x;
+      cy += p.y;
+    }
+    cx /= ground.length;
+    cy /= ground.length;
+
+    for (const light of lights) {
+      if (this.isLightUnderSlope(light.x, light.y)) {
+        // Find a valid position by moving toward center
+        let newX = light.x;
+        let newY = light.y;
+        const dx = cx - light.x;
+        const dy = cy - light.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > 0) {
+          const stepX = (dx / dist) * 100; // Move 100mm at a time
+          const stepY = (dy / dist) * 100;
+          
+          // Keep moving toward center until not under slope
+          for (let i = 0; i < 50; i++) {
+            newX += stepX;
+            newY += stepY;
+            if (!this.isLightUnderSlope(newX, newY)) {
+              break;
+            }
+          }
+        }
+        
+        light.x = Math.round(newX);
+        light.y = Math.round(newY);
+      }
+    }
+    
+    this.onRoomDataChanged?.();
     this.planView();
   }
 

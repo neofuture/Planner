@@ -14,11 +14,13 @@ import styles from "./Engine3D.module.css";
 
 interface Engine3DProps {
   roomShape: RoomShape;
+  floorTexture?: string;
   onClose: () => void;
 }
 
 export interface Engine3DHandle {
   refresh: () => void;
+  setFloorTexture: (path: string) => void;
 }
 
 type Corner = "tl" | "tr" | "bl" | "br";
@@ -31,6 +33,7 @@ const STORAGE_KEY = "planner-3d-preview";
 interface SavedState {
   window?: { top: number; left: number; width: number; height: number };
   invertY?: boolean;
+  nightMode?: boolean;
 }
 
 function loadState(): SavedState | null {
@@ -50,7 +53,7 @@ function saveState(state: SavedState) {
 }
 
 const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
-  { roomShape, onClose },
+  { roomShape, floorTexture, onClose },
   ref
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,6 +61,7 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
   const windowRef = useRef<HTMLDivElement>(null);
   const [invertY, setInvertY] = useState(() => loadState()?.invertY ?? false);
   const [kneeling, setKneeling] = useState(false);
+  const [nightMode, setNightMode] = useState(() => loadState()?.nightMode ?? false);
 
   const windowDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -76,6 +80,9 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
     refresh() {
       engineRef.current?.buildRoom(roomShape);
     },
+    setFloorTexture(path: string) {
+      engineRef.current?.setFloorTexture(path);
+    },
   }));
 
   useEffect(() => {
@@ -87,6 +94,13 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
 
     const timer = setTimeout(() => {
       engine.start(canvasRef.current!, roomShape);
+      if (floorTexture) {
+        engine.setFloorTexture(floorTexture);
+      }
+      const savedNightMode = loadState()?.nightMode ?? false;
+      if (savedNightMode) {
+        engine.setNightMode(true);
+      }
     }, 50);
 
     return () => {
@@ -105,6 +119,12 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
   }, [roomShape]);
 
   useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !floorTexture) return;
+    engine.setFloorTexture(floorTexture);
+  }, [floorTexture]);
+
+  useEffect(() => {
     if (engineRef.current) engineRef.current.invertY = invertY;
     saveState({ invertY });
   }, [invertY]);
@@ -116,6 +136,14 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
       engine.requestRender();
     }
   }, [kneeling]);
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (engine) {
+      engine.setNightMode(nightMode);
+    }
+    saveState({ nightMode });
+  }, [nightMode]);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => engineRef.current?.resize());
@@ -329,6 +357,19 @@ const Engine3D = forwardRef<Engine3DHandle, Engine3DProps>(function Engine3D(
             onChange={(e) => setKneeling(e.target.checked)}
           />
           Kneel (Shift)
+        </label>
+        <label
+          className={styles.invertLabel}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => canvasRef.current?.focus()}
+        >
+          <input
+            type="checkbox"
+            checked={nightMode}
+            onChange={(e) => setNightMode(e.target.checked)}
+          />
+          Night
         </label>
         <button className={styles.closeBtn} onClick={onClose}>
           &times;

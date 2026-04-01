@@ -14,6 +14,7 @@ import type {
   InteractionMode,
   Inset,
   DoorStyle,
+  CeilingLight,
 } from "@/lib/types";
 import { DOOR_PRESETS, getCeilingHeight } from "@/lib/types";
 
@@ -71,6 +72,12 @@ export default function PlannerPage() {
   const [floorHeight, setFloorHeight] = useState(500);
   const [floorGap, setFloorGap] = useState(0);
   const [floorOffset, setFloorOffset] = useState(0);
+  const [floorTexture, setFloorTexture] = useState("/textures/flooring/floor-wood-1.jpg");
+
+  const floorTextureOptions = [
+    { label: "Wood 1", value: "/textures/flooring/floor-wood-1.jpg" },
+    { label: "Tiles 1", value: "/textures/flooring/floor-tiles-1.jpg" },
+  ];
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -78,6 +85,9 @@ export default function PlannerPage() {
     type: "wall" | "anchor";
     index: number;
   } | null>(null);
+  
+  const [selectedLight, setSelectedLight] = useState<CeilingLight | null>(null);
+  const [showLights, setShowLights] = useState(true);
 
   const engine = engineRef.current?.engine;
 
@@ -386,6 +396,13 @@ export default function PlannerPage() {
             }
           />
           <Checkbox
+            label="Ceiling Lights"
+            checked={showLights}
+            onChange={() =>
+              toggle(setShowLights, engine?.setLights.bind(engine), showLights)
+            }
+          />
+          <Checkbox
             label="Insets"
             checked={showInsets}
             onChange={() =>
@@ -492,10 +509,11 @@ export default function PlannerPage() {
             onAnimationComplete={handleAnimationComplete}
             onRoomDataChanged={handleRoomDataChanged}
             onContextMenu={handleContextMenu}
+            onLightSelected={setSelectedLight}
           />
           {show3D && (
             <Suspense fallback={null}>
-              <Engine3D ref={engine3dRef} roomShape={roomShape} onClose={() => setShow3D(false)} />
+              <Engine3D ref={engine3dRef} roomShape={roomShape} floorTexture={floorTexture} onClose={() => setShow3D(false)} />
             </Suspense>
           )}
         </div>
@@ -820,9 +838,27 @@ export default function PlannerPage() {
 
           {selectedItem.type === "ground" && (
             <div>
-              <h3 className={styles.sectionTitle}>Ground</h3>
+              <h3 className={styles.sectionTitle}>Flooring</h3>
+              <label className={styles.label}>
+                Texture
+                <select
+                  className={styles.select}
+                  value={floorTexture}
+                  onChange={(e) => {
+                    setFloorTexture(e.target.value);
+                    engine?.setFloorTexture(e.target.value);
+                    engine3dRef.current?.setFloorTexture(e.target.value);
+                  }}
+                >
+                  {floorTextureOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <SpinnerField
-                label="Angle (\u00B0)"
+                label="Angle (°)"
                 value={floorAngle}
                 min={0}
                 max={360}
@@ -941,6 +977,150 @@ export default function PlannerPage() {
               </div>
             );
           })()}
+
+          {/* Light Settings Panel */}
+          {selectedLight && (
+            <div>
+              <h3 className={styles.sectionTitle}>
+                {selectedLight.type === "pendant" ? "Pendant Light" : "Spotlight"}
+              </h3>
+              <SpinnerField
+                label="Position X (mm)"
+                value={selectedLight.x}
+                min={0}
+                max={10000}
+                step={50}
+                onChange={(v) => {
+                  engine?.updateLight(selectedLight.id, { x: v });
+                }}
+              />
+              <SpinnerField
+                label="Position Y (mm)"
+                value={selectedLight.y}
+                min={0}
+                max={10000}
+                step={50}
+                onChange={(v) => {
+                  engine?.updateLight(selectedLight.id, { y: v });
+                }}
+              />
+              {selectedLight.type === "pendant" && (
+                <SpinnerField
+                  label="Cable Length (mm)"
+                  value={selectedLight.cableLength ?? 150}
+                  min={50}
+                  max={2000}
+                  step={10}
+                  onChange={(v) => {
+                    engine?.updateLight(selectedLight.id, { cableLength: v });
+                  }}
+                />
+              )}
+              {selectedLight.type === "spotlight" && (
+                <SpinnerField
+                  label="Beam Angle (°)"
+                  value={selectedLight.beamAngle ?? 40}
+                  min={15}
+                  max={120}
+                  step={5}
+                  onChange={(v) => {
+                    engine?.updateLight(selectedLight.id, { beamAngle: v });
+                  }}
+                />
+              )}
+              <Checkbox
+                label="Use RGB Color"
+                checked={selectedLight.rgb !== undefined}
+                onChange={() => {
+                  if (selectedLight.rgb) {
+                    engine?.updateLight(selectedLight.id, { rgb: undefined });
+                  } else {
+                    engine?.updateLight(selectedLight.id, { rgb: { r: 255, g: 255, b: 255 } });
+                  }
+                }}
+              />
+              {selectedLight.rgb ? (
+                <>
+                  <SpinnerField
+                    label="Red"
+                    value={selectedLight.rgb.r}
+                    min={0}
+                    max={255}
+                    step={5}
+                    onChange={(v) => {
+                      engine?.updateLight(selectedLight.id, { 
+                        rgb: { ...selectedLight.rgb!, r: v } 
+                      });
+                    }}
+                  />
+                  <SpinnerField
+                    label="Green"
+                    value={selectedLight.rgb.g}
+                    min={0}
+                    max={255}
+                    step={5}
+                    onChange={(v) => {
+                      engine?.updateLight(selectedLight.id, { 
+                        rgb: { ...selectedLight.rgb!, g: v } 
+                      });
+                    }}
+                  />
+                  <SpinnerField
+                    label="Blue"
+                    value={selectedLight.rgb.b}
+                    min={0}
+                    max={255}
+                    step={5}
+                    onChange={(v) => {
+                      engine?.updateLight(selectedLight.id, { 
+                        rgb: { ...selectedLight.rgb!, b: v } 
+                      });
+                    }}
+                  />
+                  <div 
+                    className={styles.colorPreview}
+                    style={{ 
+                      backgroundColor: `rgb(${selectedLight.rgb.r}, ${selectedLight.rgb.g}, ${selectedLight.rgb.b})` 
+                    }}
+                  />
+                </>
+              ) : (
+                <SpinnerField
+                  label="Color Temp (K)"
+                  value={selectedLight.colorTemp ?? (selectedLight.type === "pendant" ? 2700 : 4000)}
+                  min={2000}
+                  max={6500}
+                  step={100}
+                  onChange={(v) => {
+                    engine?.updateLight(selectedLight.id, { colorTemp: v });
+                  }}
+                />
+              )}
+              <SpinnerField
+                label="Intensity"
+                value={Math.round((selectedLight.intensity ?? 1) * 100)}
+                min={10}
+                max={100}
+                step={5}
+                onChange={(v) => {
+                  engine?.updateLight(selectedLight.id, { intensity: v / 100 });
+                }}
+              />
+              {engine?.isLightUnderSlope(selectedLight.x, selectedLight.y) && (
+                <div className={styles.warningText}>
+                  Warning: Light is under a slope
+                </div>
+              )}
+              <button
+                className={styles.smallButton}
+                onClick={() => {
+                  engine?.repositionLightsAwayFromSlopes();
+                }}
+              >
+                Move Away From Slopes
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

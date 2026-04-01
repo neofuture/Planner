@@ -74,6 +74,26 @@ export interface InternalWall {
   };
 }
 
+export type CeilingLightType = "pendant" | "spotlight";
+
+export interface CeilingLight {
+  id: string;
+  type: CeilingLightType;
+  /** Position in mm from origin */
+  x: number;
+  y: number;
+  /** For pendant: cable length in mm */
+  cableLength?: number;
+  /** Light color temperature in Kelvin (default 2700 for warm) - ignored if rgb is set */
+  colorTemp?: number;
+  /** RGB color values (0-255 each) - overrides colorTemp if set */
+  rgb?: { r: number; g: number; b: number };
+  /** Light intensity (0-1, default 1) */
+  intensity?: number;
+  /** For spotlight: beam angle in degrees (default 40) */
+  beamAngle?: number;
+}
+
 export interface FloorPlan {
   /** External walls defining the building perimeter */
   perimeter: Point[];
@@ -91,6 +111,8 @@ export interface FloorPlan {
   roomHeight?: number;
   /** Doors and windows */
   insets: Inset[];
+  /** Ceiling lights */
+  lights?: CeilingLight[];
 }
 
 /** @deprecated Use FloorPlan instead */

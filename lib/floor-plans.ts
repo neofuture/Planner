@@ -10,12 +10,23 @@ export const floorPlan1: FloorPlan = {
   ],
   internalWalls: [],
   slopes: [
-    { wall: 4, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 3, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 1, kneeWallHeight: 1400, roofAngle: 45 },
+    { wall: 4, kneeWallHeight: 2250, roofAngle: 45 },
+    { wall: 3, kneeWallHeight: 2250, roofAngle: 45 },
+    { wall: 1, kneeWallHeight: 2250, roofAngle: 45 },
   ],
   wallThickness: 300,
   ceilingHeight: 2400,
+  lights: [
+    {
+      id: "pendant-1",
+      type: "pendant",
+      x: 2200,
+      y: 2800,
+      cableLength: 150,
+      colorTemp: 2700,
+      intensity: 1,
+    },
+  ],
   insets: [
     {
       wall: 0,
@@ -189,9 +200,9 @@ export const floorPlan2: FloorPlan = {
   ],
   internalWalls: [],
   slopes: [
-    { wall: 4, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 3, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 1, kneeWallHeight: 1400, roofAngle: 45 },
+    { wall: 4, kneeWallHeight: 2250, roofAngle: 45 },
+    { wall: 3, kneeWallHeight: 2250, roofAngle: 45 },
+    { wall: 1, kneeWallHeight: 2250, roofAngle: 45 },
   ],
   wallThickness: 300,
   ceilingHeight: 2400,
@@ -314,9 +325,17 @@ export const floorPlan3: FloorPlan = {
   ceilingHeight: 2500,
   wallThickness: 300,
   slopes: [
-    { wall: 4, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 3, kneeWallHeight: 2000, roofAngle: 45 },
-    { wall: 1, kneeWallHeight: 1400, roofAngle: 45 },
+    { wall: 4, kneeWallHeight: 2350, roofAngle: 45 },
+    { wall: 3, kneeWallHeight: 2350, roofAngle: 45 },
+    { wall: 1, kneeWallHeight: 2350, roofAngle: 45 },
+  ],
+  lights: [
+    { id: "spot-1", type: "spotlight", x: 1200, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
+    { id: "spot-2", type: "spotlight", x: 3000, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
+    { id: "spot-3", type: "spotlight", x: 4800, y: 1000, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
+    { id: "spot-4", type: "spotlight", x: 1200, y: 2200, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
+    { id: "spot-5", type: "spotlight", x: 3000, y: 2200, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
+    { id: "spot-6", type: "spotlight", x: 4800, y: 2200, beamAngle: 40, colorTemp: 4000, intensity: 0.8 },
   ],
   insets: [
     {
